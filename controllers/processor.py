@@ -113,7 +113,7 @@ class ProcessorController:
                      output_dir: str,
                      progress_callback: Optional[Callable[[int, int, str], None]] = None,
                      complete_callback: Optional[Callable[[List[str], List[str]], None]] = None,
-                     max_workers: int = 4) -> None:
+                     max_workers: int = 2) -> None:  # 减少线程数避免阻塞
         """
         批量处理Excel文件
         
@@ -144,53 +144,59 @@ class ProcessorController:
                 failed_files = []
                 total_files = len(excel_files)
                 
-                self.logger.info(f"开始批量处理 {total_files} 个文件，使用 {max_workers} 个线程")
+                self.logger.info(f"开始批量处理 {total_files} 个文件，顺序处理模式")
                 
-                # 使用线程池并行处理
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    # 提交所有任务
-                    future_to_file = {
-                        executor.submit(self.process_single_file, file_path, output_dir): file_path
-                        for file_path in excel_files
-                    }
-                    
-                    # 处理完成的任务
-                    for i, future in enumerate(as_completed(future_to_file)):
-                        if self.should_stop:
-                            self.logger.info("用户请求停止处理")
-                            break
-                            
-                        file_path = future_to_file[future]
+                # 改为顺序处理，避免线程池阻塞
+                for i, file_path in enumerate(excel_files):
+                    if self.should_stop:
+                        self.logger.info("用户请求停止处理")
+                        break
                         
-                        # 更新进度
-                        if progress_callback:
-                            progress_callback(i + 1, total_files, os.path.basename(file_path))
-                        
+                    # 更新进度（在处理前）
+                    if progress_callback:
                         try:
-                            result = future.result()
-                            if result:
-                                success_files.append(result)
-                            else:
-                                failed_files.append(file_path)
+                            progress_callback(i + 1, total_files, os.path.basename(file_path))
                         except Exception as e:
-                            self.logger.error(f"处理文件异常 {file_path}: {e}")
+                            self.logger.warning(f"进度回调失败: {e}")
+                    
+                    # 处理单个文件
+                    try:
+                        result = self.process_single_file(file_path, output_dir)
+                        if result:
+                            success_files.append(result)
+                            self.logger.info(f"处理成功 ({i+1}/{total_files}): {os.path.basename(file_path)}")
+                        else:
                             failed_files.append(file_path)
+                            self.logger.warning(f"处理失败 ({i+1}/{total_files}): {os.path.basename(file_path)}")
+                    except Exception as e:
+                        self.logger.error(f"处理文件异常 {file_path}: {e}")
+                        failed_files.append(file_path)
+                    
+                    # 添加小延迟，让UI有机会响应
+                    import time
+                    time.sleep(0.1)
                 
                 # 处理完成回调
                 if complete_callback:
-                    complete_callback(success_files, failed_files)
+                    try:
+                        complete_callback(success_files, failed_files)
+                    except Exception as e:
+                        self.logger.error(f"完成回调失败: {e}")
                     
                 self.logger.info(f"批量处理完成: 成功 {len(success_files)}, 失败 {len(failed_files)}")
                 
             except Exception as e:
                 self.logger.error(f"批量处理时发生错误: {e}")
                 if complete_callback:
-                    complete_callback([], excel_files if 'excel_files' in locals() else [])
+                    try:
+                        complete_callback([], excel_files if 'excel_files' in locals() else [])
+                    except Exception as callback_e:
+                        self.logger.error(f"错误回调失败: {callback_e}")
             finally:
                 self.is_processing = False
         
         # 在新线程中执行处理，避免阻塞UI
-        processing_thread = threading.Thread(target=_process)
+        processing_thread = threading.Thread(target=_process, name="ExcelProcessor")
         processing_thread.daemon = True
         processing_thread.start()
     

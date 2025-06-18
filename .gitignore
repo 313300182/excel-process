@@ -1,0 +1,75 @@
+# Build and Release Folders
+bin-debug/
+bin-release/
+[Oo]bj/
+[Bb]in/
+build/
+dist/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+*.spec
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env
+.venv
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.project
+.pydevproject
+.settings/
+.spyderproject
+.spyproject
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Log and temporary files
+*.log
+logs/
+log/
+temp/
+tmp/
+*.tmp
+*.bak
+
+# Executables
+*.exe
+*.dll
+*.swf
+*.air
+*.ipa
+*.apk
+
+# Project specific files
+config.ini
+secrets.json
+tmdb_api_key.txt
+
+# Test data
+tests/data/
+test_videos/
+*.mkv
+*.mp4
+*.avi
+*.srt
+*.ass
+
+# If the project generates thumbnails or previews, ignore them
+thumbs/
+previews/

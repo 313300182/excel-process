@@ -5,13 +5,14 @@
 """
 
 import os
+import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import logging
 from typing import Optional
 
 from controllers.processor import ProcessorController
-from config.settings import UI_CONFIG, APP_NAME, APP_VERSION
+from config.settings import UI_CONFIG, APP_NAME, APP_VERSION, TEMPLATE_FILENAME
 
 
 class MainWindow:
@@ -90,15 +91,16 @@ class MainWindow:
         
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
-
-        ttk.Button(button_frame, text="选择源目录", command=self.select_source_dir).grid(row=0, column=0, padx=5, pady=5, sticky='ew')
-        ttk.Button(button_frame, text="选择输出目录", command=self.select_output_dir).grid(row=0, column=1, padx=5, pady=5, sticky='ew')
+        button_frame.columnconfigure(2, weight=1)
         
         self.process_button = ttk.Button(button_frame, text="开始处理", command=self.start_processing)
-        self.process_button.grid(row=1, column=0, columnspan=2, pady=10, sticky='ew')
+        self.process_button.grid(row=0, column=0, padx=(0, 3), pady=5, sticky='ew')
         
         self.stop_button = ttk.Button(button_frame, text="停止处理", command=self.stop_processing, state=tk.DISABLED)
-        self.stop_button.grid(row=2, column=0, columnspan=2, pady=5, sticky='ew')
+        self.stop_button.grid(row=0, column=1, padx=3, pady=5, sticky='ew')
+        
+        self.open_output_button = ttk.Button(button_frame, text="打开输出目录", command=self.open_output_directory)
+        self.open_output_button.grid(row=0, column=2, padx=(3, 0), pady=5, sticky='ew')
         
         # 进度条
         progress_frame = ttk.LabelFrame(main_frame, text="处理进度", padding="5")
@@ -129,7 +131,7 @@ class MainWindow:
         self.source_dir.trace('w', self.on_source_dir_changed)
         
     def setup_logging(self):
-        """设置日志记录"""
+        """设置日志记录 - 仅UI显示，不写入文件"""
         # 创建自定义日志处理器，将日志输出到UI
         class TextHandler(logging.Handler):
             def __init__(self, text_widget):
@@ -147,18 +149,24 @@ class MainWindow:
                 # 使用after方法确保在主线程中更新UI
                 self.text_widget.after(0, append)
         
-        # 配置日志
+        # 清除所有现有的处理器
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        
+        # 配置日志 - 只添加UI处理器
         text_handler = TextHandler(self.log_text)
         text_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         
-        logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
-        logger.addHandler(text_handler)
+        # 将logger保存为实例属性
+        self.logger = root_logger
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(text_handler)
         
-        # 添加控制台处理器
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(console_handler)
+        # 可选：如果需要调试，可以添加控制台处理器
+        # console_handler = logging.StreamHandler()
+        # console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        # self.logger.addHandler(console_handler)
         
     def browse_source_dir(self):
         """浏览源目录"""
@@ -251,53 +259,82 @@ class MainWindow:
     def update_progress(self, current: int, total: int, current_file: str):
         """更新进度条和日志"""
         def update():
-            progress = (current / total) * 100
-            self.progress_var.set(progress)
-            self.progress_text.set(f"正在处理: {current_file} ({current}/{total})")
+            try:
+                progress = (current / total) * 100 if total > 0 else 0
+                self.progress_var.set(progress)
+                self.progress_text.set(f"正在处理: {current_file} ({current}/{total})")
+                
+                # 强制更新UI
+                self.root.update_idletasks()
+                
+            except Exception as e:
+                print(f"进度更新失败: {e}")  # 使用print避免日志循环
             
-        self.root.after(0, update)
+        # 使用after_idle确保UI响应
+        self.root.after_idle(update)
         
     def on_processing_complete(self, success_files: list, failed_files: list):
         """处理完成回调"""
         def update():
-            self.process_button.config(state='normal')
-            self.stop_button.config(state='disabled')
-            self.progress_var.set(100)
-            
-            total = len(success_files) + len(failed_files)
-            if failed_files:
-                self.progress_text.set(f"完成: 成功 {len(success_files)}, 失败 {len(failed_files)}")
-                messagebox.showwarning("处理完成", 
-                    f"处理完成\n成功: {len(success_files)} 个文件\n失败: {len(failed_files)} 个文件\n\n详细信息请查看日志")
-            else:
-                self.progress_text.set(f"全部完成: {len(success_files)} 个文件")
-                messagebox.showinfo("处理完成", f"成功处理 {len(success_files)} 个文件!")
+            try:
+                self.process_button.config(state='normal')
+                self.stop_button.config(state='disabled')
+                self.progress_var.set(100)
                 
-            self.log_message(f"批量处理完成: 成功 {len(success_files)}, 失败 {len(failed_files)}", "INFO")
-            messagebox.showinfo("处理完成", f"批量处理完成！\n\n成功: {len(success_files)}\n失败: {len(failed_files)}\n\n详情请查看日志。")
+                # 记录日志
+                self.log_message(f"批量处理完成: 成功 {len(success_files)}, 失败 {len(failed_files)}", "INFO")
                 
-        self.root.after(0, update)
+                # 显示单一的完成提示
+                if failed_files:
+                    self.progress_text.set(f"完成: 成功 {len(success_files)}, 失败 {len(failed_files)}")
+                    messagebox.showwarning("处理完成", 
+                        f"批量处理完成！\n\n成功: {len(success_files)} 个文件\n失败: {len(failed_files)} 个文件\n\n详细信息请查看日志")
+                else:
+                    self.progress_text.set(f"全部完成: {len(success_files)} 个文件")
+                    messagebox.showinfo("处理完成", 
+                        f"批量处理完成！\n\n成功处理 {len(success_files)} 个文件\n\n详情请查看日志。")
+                
+                # 强制更新UI
+                self.root.update_idletasks()
+                
+            except Exception as e:
+                print(f"完成回调失败: {e}")  # 使用print避免日志循环
+                
+        # 使用after确保在主线程中执行
+        self.root.after(100, update)  # 稍微延迟确保所有处理完成
         
-    def select_source_dir(self):
-        """选择源目录"""
-        directory = filedialog.askdirectory(title="选择包含Excel文件的文件夹")
-        if directory:
-            self.source_dir.set(directory)
-            self.log_message(f"选择了新的源目录: {directory}", "INFO")
+    def open_output_directory(self):
+        """打开输出目录"""
+        output_dir = self.output_dir.get()
+        
+        if not output_dir:
+            messagebox.showwarning("提示", "请先选择输出文件夹")
+            return
             
-    def select_output_dir(self):
-        """选择输出目录"""
-        directory = filedialog.askdirectory(title="选择输出文件夹")
-        if directory:
-            self.output_dir.set(directory)
-            self.log_message(f"选择了新的输出目录: {directory}", "INFO")
+        # 检查目录是否存在
+        if not os.path.exists(output_dir):
+            messagebox.showerror("错误", f"输出目录不存在: {output_dir}")
+            return
             
+        try:
+            # 根据操作系统使用不同的命令打开文件夹
+            if os.name == 'nt':  # Windows
+                os.startfile(output_dir)
+            elif os.name == 'posix':  # macOS and Linux
+                if os.uname().sysname == 'Darwin':  # macOS
+                    subprocess.run(['open', output_dir])
+                else:  # Linux
+                    subprocess.run(['xdg-open', output_dir])
+            
+            self.log_message(f"已打开输出目录: {output_dir}", "INFO")
+            
+        except Exception as e:
+            self.log_message(f"打开输出目录失败: {str(e)}", "ERROR")
+            messagebox.showerror("错误", f"无法打开输出目录:\n{str(e)}")
+
     def log_message(self, message: str, level: str = "INFO"):
         """记录日志消息"""
-        self.log_text.configure(state='normal')
-        self.log_text.insert(tk.END, message + '\n')
-        self.log_text.configure(state='disabled')
-        self.log_text.see(tk.END)
+        # 只通过logger记录，让TextHandler处理UI显示，避免重复
         self.logger.log(getattr(logging, level.upper(), logging.INFO), message)
         
     def run(self):
