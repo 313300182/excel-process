@@ -32,7 +32,7 @@ class TeacherExcelWriter:
                                    original_filename: str,
                                    source_file_path: str) -> Optional[str]:
         """
-        创建按老师分组的多sheet Excel文件
+        创建按老师角色分类的多sheet Excel文件
         
         Args:
             all_data: 所有数据列表
@@ -55,121 +55,97 @@ class TeacherExcelWriter:
             output_filename = self._generate_output_filename(original_filename)
             output_path = os.path.join(output_dir, output_filename)
             
-            # 按老师分组数据
-            grouped_data = self._group_data_by_teachers(all_data)
+            # 按角色分组数据
+            grouped_data = self._group_data_by_role(all_data)
             
-            # 复制源文件作为基础
-            self.logger.info(f"复制源文件: {source_file_path} -> {output_path}")
-            shutil.copy2(source_file_path, output_path)
+            # 创建新的工作簿
+            workbook = Workbook()
             
-            # 打开复制的文件
-            workbook = load_workbook(output_path)
-            
-            # 重命名原始sheet为"原始数据"
+            # 删除默认的sheet
             if workbook.worksheets:
-                original_sheet = workbook.worksheets[0]
-                original_sheet.title = "原始数据"
-                self.logger.info(f"重命名原始sheet为: 原始数据")
+                workbook.remove(workbook.worksheets[0])
             
             sheet_count = 0
-            # 为每个老师创建sheet
-            for teacher_info, teacher_data in grouped_data.items():
-                sheet_name = self._generate_sheet_name(teacher_info)
+            role_names = TEACHER_FILE_CONFIG['role_names']
+            
+            # 为每个角色创建sheet
+            for role, role_data in grouped_data.items():
+                if not role_data:  # 跳过空数据的角色
+                    continue
+                    
+                sheet_name = role_names[role]
                 worksheet = workbook.create_sheet(sheet_name)
                 
                 # 写入表头
                 self._write_headers(worksheet)
                 
                 # 写入数据
-                self._write_teacher_data(worksheet, teacher_data)
+                self._write_teacher_data(worksheet, role_data)
                 
                 # 添加合计行
                 if TEACHER_OUTPUT_CONFIG.get('add_total_row', False):
-                    self._write_total_row(worksheet, teacher_data)
+                    self._write_total_row(worksheet, role_data)
                 
                 # 设置列宽
                 self._adjust_column_width(worksheet)
                 
                 sheet_count += 1
-                self.logger.info(f"创建sheet: {sheet_name}, 数据行数: {len(teacher_data)}")
+                self.logger.info(f"创建sheet: {sheet_name}, 数据行数: {len(role_data)}")
             
             # 保存文件
             workbook.save(output_path)
             workbook.close()
             
-            self.logger.info(f"成功创建老师分组文件: {output_path}, 原始数据1个sheet + {sheet_count}个老师分组sheet")
+            self.logger.info(f"成功创建老师角色分类文件: {output_path}, 共{sheet_count}个角色分类sheet")
             return output_path
             
         except Exception as e:
-            self.logger.error(f"创建老师分组文件失败: {e}")
+            self.logger.error(f"创建老师角色分类文件失败: {e}")
             return None
+
     
-    def _group_data_by_teachers(self, all_data: List[Dict[str, Any]]) -> Dict[tuple, List[Dict[str, Any]]]:
+    def _group_data_by_role(self, all_data: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
-        按老师分组数据
+        按角色分组数据
         
         Args:
             all_data: 所有数据
             
         Returns:
-            Dict: 分组后的数据，key为(老师姓名, 角色)元组
+            Dict: 分组后的数据，key为角色名称
         """
-        grouped_data = {}
-        teacher_columns = ['service_director', 'service_teacher', 'operation_teacher']
-        role_names = TEACHER_FILE_CONFIG['role_names']
+        grouped_data = {
+            '服务总监': [],
+            '服务老师': [],
+            '操作老师': [],
+            '店家分类': []
+        }
+        
+        role_mapping = {
+            'service_director': '服务总监',
+            'service_teacher': '服务老师',
+            'operation_teacher': '操作老师'
+        }
+        
         empty_name = TEACHER_FILE_CONFIG['empty_teacher_name']
         
         for row in all_data:
-            # 为每个老师角色创建分组
-            for role in teacher_columns:
-                teacher_name = row.get(role)
+            # 为每个角色检查是否有值，有值则加入对应的sheet
+            for role_field, role_name in role_mapping.items():
+                teacher_name = row.get(role_field)
                 
-                # 处理空值
-                if not teacher_name or str(teacher_name).strip() == '':
-                    teacher_name = empty_name
-                else:
+                # 只有该角色字段有值时才加入对应的sheet
+                if teacher_name and str(teacher_name).strip() != '':
                     teacher_name = str(teacher_name).strip()
-                
-                # 创建分组key
-                teacher_key = (teacher_name, role_names[role])
-                
-                if teacher_key not in grouped_data:
-                    grouped_data[teacher_key] = []
-                
-                # 添加数据到对应分组
-                grouped_data[teacher_key].append(row)
-        
-        # 按老师姓名排序
-        sorted_groups = dict(sorted(grouped_data.items(), key=lambda x: (x[0][0], x[0][1])))
-        
-        return sorted_groups
-    
-    def _generate_sheet_name(self, teacher_info: tuple) -> str:
-        """
-        生成sheet名称
-        
-        Args:
-            teacher_info: (老师姓名, 角色)元组
+                    # 不修改原数据，直接添加到对应角色的数据列表
+                    grouped_data[role_name].append(row)
             
-        Returns:
-            str: sheet名称
-        """
-        teacher_name, role = teacher_info
-        sheet_name = TEACHER_FILE_CONFIG['sheet_name_format'].format(
-            teacher_name=teacher_name, 
-            role=role
-        )
+            # 店家分类：所有数据都加入店家分类sheet
+            grouped_data['店家分类'].append(row)
         
-        # Excel sheet名称限制
-        # 不能超过31个字符，不能包含特殊字符
-        invalid_chars = ['/', '\\', '?', '*', '[', ']', ':']
-        for char in invalid_chars:
-            sheet_name = sheet_name.replace(char, '_')
-        
-        if len(sheet_name) > 31:
-            sheet_name = sheet_name[:28] + '...'
-        
-        return sheet_name
+        return grouped_data
+    
+
     
     def _generate_output_filename(self, original_filename: str) -> str:
         """
@@ -307,6 +283,20 @@ class TeacherExcelWriter:
                 cell = worksheet.cell(row=total_row, column=col)
                 cell.font = Font(bold=True)
                 cell.fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+            
+            # 添加实收业绩和体验卡合计行
+            grand_total_row = total_row + 1
+            grand_total = total_commission + total_cards
+            
+            # 写入总合计标签和数值
+            worksheet.cell(row=grand_total_row, column=total_label_column, value="实收业绩和体验卡合计")
+            worksheet.cell(row=grand_total_row, column=total_amount_column, value=grand_total)
+            
+            # 设置总合计行样式
+            for col in range(1, 9):  # A-H列
+                cell = worksheet.cell(row=grand_total_row, column=col)
+                cell.font = Font(bold=True, color="FF0000")  # 红色字体以示区别
+                cell.fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")  # 黄色背景
             
         except Exception as e:
             self.logger.error(f"写入合计行失败: {e}")
