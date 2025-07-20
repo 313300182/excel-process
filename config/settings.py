@@ -5,6 +5,7 @@ Excel处理工具配置文件
 """
 
 import os
+import logging
 
 # 应用配置
 APP_NAME = "Excel批量处理工具"
@@ -111,4 +112,9 @@ def get_template_path():
 def get_log_path():
     """获取日志文件路径"""
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_dir, LOG_CONFIG['filename']) 
+    return os.path.join(base_dir, LOG_CONFIG['filename'])
+
+class MainWindow:
+    def __init__(self, ...):
+        # ... 其他初始化 ...
+        self.logger = logging.getLogger(__name__) 

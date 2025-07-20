@@ -11,6 +11,7 @@ import logging
 from typing import Optional
 
 from controllers.processor import ProcessorController
+from controllers.teacher_processor import TeacherProcessorController
 from config.settings import UI_CONFIG, APP_NAME, APP_VERSION
 
 
@@ -20,10 +21,14 @@ class MainWindow:
     def __init__(self):
         self.root = tk.Tk()
         self.processor = ProcessorController()
+        self.teacher_processor = TeacherProcessorController()
         self.source_dir = tk.StringVar()
         self.output_dir = tk.StringVar()
         self.progress_var = tk.DoubleVar()
         self.progress_text = tk.StringVar(value="就绪")
+        
+        # 处理模式选择
+        self.processing_mode = tk.StringVar(value="normal")  # normal 或 teacher
         
         self.setup_ui()
         self.setup_logging()
@@ -47,7 +52,7 @@ class MainWindow:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(4, weight=1)
+        main_frame.rowconfigure(5, weight=1)
         
         # 源目录选择
         ttk.Label(main_frame, text="源文件夹:", font=('微软雅黑', 10, 'bold')).grid(
@@ -75,9 +80,21 @@ class MainWindow:
         
         ttk.Button(output_frame, text="浏览", command=self.browse_output_dir).grid(row=0, column=1)
         
+        # 处理模式选择
+        mode_frame = ttk.LabelFrame(main_frame, text="处理模式", padding="5")
+        mode_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 5))
+        
+        ttk.Radiobutton(mode_frame, text="常规Excel处理（数据提取到模板）", 
+                       variable=self.processing_mode, value="normal",
+                       command=self.on_mode_changed).grid(row=0, column=0, sticky=tk.W, padx=(10, 0))
+        
+        ttk.Radiobutton(mode_frame, text="老师分组处理（按老师拆分多Sheet）", 
+                       variable=self.processing_mode, value="teacher",
+                       command=self.on_mode_changed).grid(row=1, column=0, sticky=tk.W, padx=(10, 0))
+        
         # 文件信息显示
         info_frame = ttk.LabelFrame(main_frame, text="文件信息", padding="5")
-        info_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 5))
+        info_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 5))
         info_frame.columnconfigure(0, weight=1)
         
         self.info_label = ttk.Label(info_frame, text="请选择源文件夹", 
@@ -86,7 +103,7 @@ class MainWindow:
         
         # 控制按钮
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=3, column=0, columnspan=3, pady=(10, 5))
+        button_frame.grid(row=4, column=0, columnspan=3, pady=(10, 5))
         
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
@@ -102,7 +119,7 @@ class MainWindow:
         
         # 进度条
         progress_frame = ttk.LabelFrame(main_frame, text="处理进度", padding="5")
-        progress_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(5, 0))
+        progress_frame.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(5, 0))
         progress_frame.columnconfigure(0, weight=1)
         progress_frame.rowconfigure(1, weight=1)
         
@@ -172,12 +189,22 @@ class MainWindow:
         if directory:
             self.output_dir.set(directory)
             
+    def on_mode_changed(self):
+        """处理模式改变时的回调"""
+        # 重新验证目录以更新文件信息
+        if self.source_dir.get():
+            self.on_source_dir_changed()
+    
     def on_source_dir_changed(self, *args):
         """源目录改变时的处理"""
         directory = self.source_dir.get()
         if directory and os.path.exists(directory):
-            # 验证目录
-            result = self.processor.validate_source_directory(directory)
+            # 根据处理模式选择不同的验证器
+            if self.processing_mode.get() == "teacher":
+                result = self.teacher_processor.validate_teacher_source_directory(directory)
+            else:
+                result = self.processor.validate_source_directory(directory)
+                
             if result['valid']:
                 self.info_label.config(text=f"✓ {result['message']}", foreground="green")
                 if result['files']:
@@ -208,20 +235,31 @@ class MainWindow:
             messagebox.showerror("错误", "源文件夹不存在")
             return
             
-        # 验证源目录
-        validation = self.processor.validate_source_directory(source)
-        if not validation['valid']:
-            messagebox.showerror("错误", validation['message'])
-            return
+        # 根据处理模式验证源目录和准备输出目录
+        if self.processing_mode.get() == "teacher":
+            # 老师分组模式
+            validation = self.teacher_processor.validate_teacher_source_directory(source)
+            if not validation['valid']:
+                messagebox.showerror("错误", validation['message'])
+                return
             
-        # 检查模板文件是否存在
-        if not self.processor.writer.validate_template():
-            self.log_message(f"模板文件不存在或无效: {self.processor.writer.template_path}\n请将模板文件 '{TEMPLATE_FILENAME}' 放置在 'templates' 目录下。", "ERROR")
-            messagebox.showerror("模板错误", f"模板文件不存在或无效: {self.processor.writer.template_path}\n\n请确保模板文件 '{TEMPLATE_FILENAME}' 存在于 'templates' 目录下。")
-            return False
-            
-        # 准备输出目录
-        actual_output_dir = self.processor.prepare_output_directory(output)
+            # 准备老师分组输出目录
+            actual_output_dir = self.teacher_processor.prepare_teacher_output_directory(output)
+        else:
+            # 常规模式
+            validation = self.processor.validate_source_directory(source)
+            if not validation['valid']:
+                messagebox.showerror("错误", validation['message'])
+                return
+                
+            # 检查模板文件是否存在
+            if not self.processor.writer.validate_template():
+                self.log_message(f"模板文件不存在或无效: {self.processor.writer.template_path}", "ERROR")
+                messagebox.showerror("模板错误", f"模板文件不存在或无效: {self.processor.writer.template_path}")
+                return
+                
+            # 准备输出目录
+            actual_output_dir = self.processor.prepare_output_directory(output)
         
         # 更新UI状态
         self.process_button.config(state='disabled')
@@ -234,18 +272,34 @@ class MainWindow:
         self.log_text.delete(1.0, tk.END)
         self.log_text.configure(state='disabled')
         
-        # 开始处理
-        self.processor.process_batch(
-            source_dir=source,
-            output_dir=actual_output_dir,
-            progress_callback=self.update_progress,
-            complete_callback=self.on_processing_complete
-        )
+        # 根据处理模式开始处理
+        if self.processing_mode.get() == "teacher":
+            # 老师分组处理
+            self.teacher_processor.process_teacher_batch(
+                source_dir=source,
+                output_dir=actual_output_dir,
+                progress_callback=self.update_progress,
+                complete_callback=self.on_processing_complete
+            )
+        else:
+            # 常规处理
+            self.processor.process_batch(
+                source_dir=source,
+                output_dir=actual_output_dir,
+                progress_callback=self.update_progress,
+                complete_callback=self.on_processing_complete
+            )
         
     def stop_processing(self):
         """停止处理"""
         self.log_message("用户请求停止处理...", "WARNING")
-        self.processor.stop_processing()
+        
+        # 根据当前处理模式停止对应的处理器
+        if self.processing_mode.get() == "teacher":
+            self.teacher_processor.stop_processing()
+        else:
+            self.processor.stop_processing()
+            
         self.progress_text.set("正在停止...")
         
     def update_progress(self, current: int, total: int, current_file: str):
