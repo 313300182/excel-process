@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.merge import MergedCellRange
+from openpyxl.styles import Alignment
 
 from config.settings import TARGET_CONFIG, OUTPUT_CONFIG, get_template_path
 
@@ -88,7 +89,7 @@ class ExcelWriter:
     
     def _safe_write_cell(self, worksheet, row: int, col: int, value: Any) -> bool:
         """
-        安全地写入单元格（处理合并单元格）
+        安全地写入单元格（处理合并单元格）并设置居中对齐
         
         Args:
             worksheet: 工作表对象
@@ -101,23 +102,27 @@ class ExcelWriter:
         """
         try:
             cell = worksheet.cell(row=row, column=col)
+            target_cell = cell  # 默认目标单元格
             
             # 检查是否是合并单元格
             if hasattr(cell, 'coordinate'):
                 for merged_range in worksheet.merged_cells.ranges:
                     if cell.coordinate in merged_range:
                         # 这是合并单元格，获取左上角单元格
-                        top_left_cell = worksheet.cell(
+                        target_cell = worksheet.cell(
                             row=merged_range.min_row, 
                             column=merged_range.min_col
                         )
-                        top_left_cell.value = value
-                        self.logger.debug(f"写入合并单元格 {cell.coordinate} -> {top_left_cell.coordinate}: {value}")
-                        return True
+                        self.logger.debug(f"写入合并单元格 {cell.coordinate} -> {target_cell.coordinate}: {value}")
+                        break
             
-            # 普通单元格，直接写入
-            cell.value = value
-            self.logger.debug(f"写入单元格 {cell.coordinate}: {value}")
+            # 写入值
+            target_cell.value = value
+            
+            # 设置居中对齐
+            target_cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            self.logger.debug(f"写入单元格 {target_cell.coordinate}: {value} (居中对齐)")
             return True
             
         except Exception as e:
@@ -300,29 +305,41 @@ class ExcelWriter:
             fill_positions = TARGET_CONFIG['fill_positions']
             data_start_row = TARGET_CONFIG.get('data_start_row', 2)
             
+            # 获取默认值配置
+            default_values = TARGET_CONFIG.get('default_values', {})
+            
             for row_index, data_row in enumerate(data_list):
                 current_row = data_start_row + row_index
                 
                 for field_name, col_index in fill_positions.items():
+                    # 优先使用数据行中的值，如果没有则使用默认值
                     if field_name in data_row:
                         value = data_row[field_name]
+                    elif field_name in default_values:
+                        value = default_values[field_name]
+                    else:
+                        continue  # 跳过没有数据也没有默认值的字段
                         
-                        # 处理空值
-                        if value is None:
-                            value = ""
-                        # 处理数字格式
-                        elif field_name in ['quantity', 'amount'] and value != "":
-                            try:
-                                # 尝试转换为数字
-                                if isinstance(value, str):
-                                    # 移除逗号等格式符号
-                                    value = value.replace(',', '').replace('，', '')
-                                value = float(value)
-                            except (ValueError, TypeError):
-                                # 如果转换失败，保持原值
-                                pass
-                            
-                        self._safe_write_cell(worksheet, current_row, col_index, value)
+                    # 处理空值
+                    if value is None:
+                        value = ""
+                    # 处理数字格式（但排除字符串类型的字段）
+                    elif field_name in ['quantity', 'amount', 'tax_rate'] and value != "":
+                        try:
+                            # 尝试转换为数字
+                            if isinstance(value, str):
+                                # 移除逗号等格式符号
+                                value = value.replace(',', '').replace('，', '')
+                            value = float(value)
+                        except (ValueError, TypeError):
+                            # 如果转换失败，保持原值
+                            pass
+                    # 对于字符串类型字段（如code），保持原始字符串格式
+                    elif field_name == 'code' and isinstance(value, (int, float)):
+                        # 如果code字段意外是数字，转换为字符串
+                        value = str(value)
+                        
+                    self._safe_write_cell(worksheet, current_row, col_index, value)
                         
             return data_start_row + len(data_list) - 1
                         
