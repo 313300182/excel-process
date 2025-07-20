@@ -19,11 +19,15 @@ TEACHER_SOURCE_CONFIG = {
         'service_teacher': 4,   # D列 - 服务老师
         'operation_teacher': 5, # E列 - 操作老师
         'store_name': 6,        # F列 - 店名
-        'commission': 7,        # G列 - 实收业绩 
-        'experience_card': 8,   # H列 - 体验卡
-        'notes': 9,            # I列 - 开单明细
-        'public_revenue': 10,   # J列 - 公收
-        'private_revenue': 11,  # K列 - 应收
+        'order_amount': 7,      # G列 - 开单金额
+        'debt_collection': 8,   # H列 - 收欠款
+        'payment': 9,           # I列 - 收款
+        'card_deduction': 10,   # J列 - 卡扣
+        'debt': 11,             # K列 - 欠款
+        'commission': 12,       # L列 - 实收业绩 
+        'experience_card': 13,  # M列 - 体验卡
+        'notes': 14,            # N列 - 开单明细
+        'public_revenue': 15,   # O列 - 公司收
     },
     
     # 老师角色列 - 用于分组
@@ -56,8 +60,15 @@ TEACHER_OUTPUT_CONFIG = {
         'service_teacher': 4,   # D列 - 服务老师
         'operation_teacher': 5, # E列 - 操作老师
         'store_name': 6,        # F列 - 店名
-        'commission': 7,        # G列 - 实收业绩
-        'experience_card': 8,   # H列 - 体验卡
+        'order_amount': 7,      # G列 - 开单金额
+        'debt_collection': 8,   # H列 - 收欠款
+        'payment': 9,           # I列 - 收款
+        'card_deduction': 10,   # J列 - 卡扣
+        'debt': 11,             # K列 - 欠款
+        'commission': 12,       # L列 - 实收业绩
+        'experience_card': 13,  # M列 - 体验卡
+        'notes': 14,            # N列 - 开单明细
+        'public_revenue': 15,   # O列 - 公司收
     },
     
     # 数据起始行（从第2行开始，保留表头）
@@ -71,22 +82,39 @@ TEACHER_OUTPUT_CONFIG = {
         (1, 4): '服务老师',
         (1, 5): '操作老师',
         (1, 6): '店名',
-        (1, 7): '实收业绩',
-        (1, 8): '体验卡',
+        (1, 7): '开单金额',
+        (1, 8): '收欠款',
+        (1, 9): '收款',
+        (1, 10): '卡扣',
+        (1, 11): '欠款',
+        (1, 12): '实收业绩',
+        (1, 13): '体验卡',
+        (1, 14): '开单明细',
+        (1, 15): '公司收',
     },
     
     # 是否添加合计行
     'add_total_row': True,
     'total_label': '合计',
     'total_label_column': 2,  # 合计标签放在B列
-    'total_amount_column': 7, # 合计金额放在G列
-    'total_card_column': 8,   # 体验卡合计放在H列
+    
+    # 需要合计的数值列（除了开单明细）
+    'total_columns': {
+        'order_amount': 7,      # 开单金额合计
+        'debt_collection': 8,   # 收欠款合计
+        'payment': 9,           # 收款合计
+        'card_deduction': 10,   # 卡扣合计
+        'debt': 11,             # 欠款合计
+        'commission': 12,       # 实收业绩合计
+        'experience_card': 13,  # 体验卡合计
+        'public_revenue': 15,   # 公司收合计
+    }
 }
 
 # 输出文件配置
 TEACHER_FILE_CONFIG = {
     # 输出文件命名格式
-    'filename_format': '{original_name}-老师分组-{timestamp}.xlsx',
+    'filename_format': '{original_name}-{timestamp}.xlsx',
     
     # Sheet命名格式
     'sheet_name_format': '{teacher_name}({role})',

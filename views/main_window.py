@@ -38,7 +38,10 @@ class MainWindow:
         """设置用户界面"""
         # 窗口配置
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
-        self.root.geometry(UI_CONFIG['window_size'])
+        
+        # 居中显示窗口
+        self._center_window()
+        
         self.root.resizable(True, True)
         
         # 设置字体
@@ -85,11 +88,11 @@ class MainWindow:
         mode_frame = ttk.LabelFrame(main_frame, text="处理模式", padding="5")
         mode_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 5))
 
-        ttk.Radiobutton(mode_frame, text="常规Excel处理（数据提取到模板）",
+        ttk.Radiobutton(mode_frame, text="国韩报税Excel处理（数据提取到模板）",
                        variable=self.processing_mode, value="normal",
                        command=self.on_mode_changed).grid(row=0, column=0, sticky=tk.W, padx=(10, 0))
 
-        ttk.Radiobutton(mode_frame, text="老师分组处理（按老师拆分多Sheet）",
+        ttk.Radiobutton(mode_frame, text="业绩分组处理（拆分多Sheet）",
                        variable=self.processing_mode, value="teacher",
                        command=self.on_mode_changed).grid(row=1, column=0, sticky=tk.W, padx=(10, 0))
 
@@ -385,6 +388,23 @@ class MainWindow:
         # 只通过logger记录，让TextHandler处理UI显示，避免重复
         self.logger.log(getattr(logging, level.upper(), logging.INFO), message)
         
+    def _center_window(self):
+        """居中显示窗口"""
+        # 从配置文件获取窗口尺寸
+        window_size = UI_CONFIG['window_size']  # 格式: "800x600"
+        width, height = map(int, window_size.split('x'))
+        
+        # 获取屏幕尺寸
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # 计算居中位置
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        
+        # 设置窗口位置和大小
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
+    
     def run(self):
         """运行应用"""
         # 启动主循环
