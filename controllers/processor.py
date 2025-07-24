@@ -24,6 +24,15 @@ class ProcessorController:
         self.writer = ExcelWriter()
         self.is_processing = False
         self.should_stop = False
+    
+    def set_template_path(self, template_path: str):
+        """
+        设置模板文件路径
+        
+        Args:
+            template_path: 模板文件路径
+        """
+        self.writer.set_template_path(template_path)
         
     def scan_excel_files(self, directory: str) -> List[str]:
         """

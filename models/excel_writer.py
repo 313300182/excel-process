@@ -21,9 +21,18 @@ from config.settings import TARGET_CONFIG, OUTPUT_CONFIG, get_template_path
 class ExcelWriter:
     """Excel文件写入器"""
     
-    def __init__(self):
+    def __init__(self, template_path: Optional[str] = None):
         self.logger = logging.getLogger(__name__)
-        self.template_path = get_template_path()
+        self.template_path = template_path if template_path else get_template_path()
+    
+    def set_template_path(self, template_path: str):
+        """
+        设置模板文件路径
+        
+        Args:
+            template_path: 模板文件路径
+        """
+        self.template_path = template_path
         
     def validate_template(self) -> bool:
         """
