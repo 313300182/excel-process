@@ -290,6 +290,7 @@ class TeacherExcelReader:
     def get_teachers_summary(self, file_path: str) -> Dict[str, Any]:
         """
         获取文件中的老师分组摘要信息
+        支持多人分割（/分隔符）的正确统计
         
         Args:
             file_path: Excel文件路径
@@ -307,13 +308,24 @@ class TeacherExcelReader:
                 'preview': data_list[:3] if data_list else [],
             }
             
-            # 统计每个角色的老师
+            # 统计每个角色的老师（支持多人分割）
             for role, _ in teacher_columns.items():
                 teachers = set()
                 for row in data_list:
-                    teacher = row.get(role)
-                    if teacher and str(teacher).strip():
-                        teachers.add(str(teacher).strip())
+                    teacher_raw = row.get(role)
+                    if teacher_raw and str(teacher_raw).strip():
+                        teacher_str = str(teacher_raw).strip()
+                        
+                        # 检查是否包含分隔符
+                        if '/' in teacher_str:
+                            # 多人情况：分割并添加每个老师
+                            teacher_names = [name.strip() for name in teacher_str.split('/') if name.strip()]
+                            for teacher_name in teacher_names:
+                                teachers.add(teacher_name)
+                        else:
+                            # 单人情况：直接添加
+                            teachers.add(teacher_str)
+                            
                 summary['teachers'][role] = list(teachers)
             
             return summary

@@ -136,6 +136,7 @@ class TeacherExcelWriter:
     def _group_data_by_role(self, all_data: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
         按角色和店家分组数据，为每个老师和店家创建独立分组（包括空值）
+        支持多人分割（/分隔符）和数值字段的均分处理
         
         Args:
             all_data: 所有数据
@@ -151,25 +152,73 @@ class TeacherExcelWriter:
             'operation_teacher': '操作老师'
         }
         
+        # 需要均分的数值字段
+        numeric_fields = [
+            'order_amount', 'debt_collection', 'payment', 'card_deduction',
+            'debt', 'commission', 'experience_card', 'public_revenue'
+        ]
+        
         empty_name = TEACHER_FILE_CONFIG['empty_teacher_name']
         
         for row in all_data:
-            # 为每个角色创建具体老师的分组（包括空值）
+            # 为每个角色创建具体老师的分组（支持多人分割）
             for role_field, role_name in role_mapping.items():
-                teacher_name = row.get(role_field)
+                teacher_names_raw = row.get(role_field)
                 
                 # 处理有值和无值的情况
-                if teacher_name and str(teacher_name).strip() != '':
-                    teacher_name = str(teacher_name).strip()
-                    group_key = f"{teacher_name}({role_name})"
+                if teacher_names_raw and str(teacher_names_raw).strip() != '':
+                    teacher_names_str = str(teacher_names_raw).strip()
+                    
+                    # 检查是否包含分隔符
+                    if '/' in teacher_names_str:
+                        # 多人情况：分割并均分数据
+                        teacher_names = [name.strip() for name in teacher_names_str.split('/') if name.strip()]
+                        
+                        if teacher_names:  # 确保分割后有有效名称
+                            person_count = len(teacher_names)
+                            
+                            # 为每个老师创建分组记录
+                            for teacher_name in teacher_names:
+                                group_key = f"{teacher_name}({role_name})"
+                                
+                                if group_key not in grouped_data:
+                                    grouped_data[group_key] = []
+                                
+                                # 复制原始行数据
+                                split_row = row.copy()
+                                
+                                # 将该角色字段设置为单个老师名称
+                                split_row[role_field] = teacher_name
+                                
+                                # 均分数值字段
+                                for field in numeric_fields:
+                                    if field in split_row and split_row[field] is not None:
+                                        try:
+                                            original_value = float(split_row[field])
+                                            split_row[field] = original_value / person_count
+                                        except (ValueError, TypeError):
+                                            # 如果转换失败，保持原值
+                                            pass
+                                
+                                grouped_data[group_key].append(split_row)
+                        else:
+                            # 分割后没有有效名称，归入"未分类"
+                            group_key = f"未分类({role_name})"
+                            if group_key not in grouped_data:
+                                grouped_data[group_key] = []
+                            grouped_data[group_key].append(row)
+                    else:
+                        # 单人情况：正常处理
+                        group_key = f"{teacher_names_str}({role_name})"
+                        if group_key not in grouped_data:
+                            grouped_data[group_key] = []
+                        grouped_data[group_key].append(row)
                 else:
                     # 空值数据归入"未分类"
                     group_key = f"未分类({role_name})"
-                
-                if group_key not in grouped_data:
-                    grouped_data[group_key] = []
-                
-                grouped_data[group_key].append(row)
+                    if group_key not in grouped_data:
+                        grouped_data[group_key] = []
+                    grouped_data[group_key].append(row)
             
             # 按店家分组（包括空值）
             store_name = row.get('store_name')
