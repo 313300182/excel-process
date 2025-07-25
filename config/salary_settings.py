@@ -64,37 +64,79 @@ SALARY_CONFIG = {
         'employee_name': 'B2',  # 姓名
         'month': 'D2',          # 月份
         
-        # 应发项目映射
+        # 应发项目映射（包含数量、单价、金额）
         'salary_items': {
-            'base_salary': 'E6',        # 基本底薪
-            'floating_salary': 'E7',    # 浮动底薪
-            'service_commission': 'E8', # 服务提成
-            'operation_commission': 'E9', # 操作提成
-            'training_allowance': 'E10', # 培训补贴
-            'body_manual_fee': 'E11',   # 身体部位手工费
-            'face_manual_fee': 'E12',   # 面部手工费
-            'total_salary': 'E13'       # 应发合计
+            # 基本底薪
+            'base_salary_quantity': 'C6',     # 基本底薪数量
+            'base_salary_rate': 'D6',         # 基本底薪单价
+            'base_salary': 'E6',              # 基本底薪金额
+            
+            # 浮动底薪
+            'floating_salary_quantity': 'C7', # 浮动底薪数量
+            'floating_salary_rate': 'D7',     # 浮动底薪单价
+            'floating_salary': 'E7',          # 浮动底薪金额
+            
+            # 专家提成（服务总监使用）
+            'expert_commission_quantity': 'C8', # 专家提成数量
+            'expert_commission_rate': 'D8',     # 专家提成比例
+            'expert_commission': 'E8',          # 专家提成金额
+            
+            # 服务提成（服务老师使用）
+            'service_commission_quantity': 'C8', # 服务提成数量
+            'service_commission_rate': 'D8',     # 服务提成比例
+            'service_commission': 'E8',          # 服务提成金额
+
+            # 操作提成（操作老师使用）
+            'operation_commission_quantity': 'C8', # 操作提成数量
+            'operation_commission_rate': 'D8',     # 操作提成比例
+            'operation_commission': 'E8',          # 操作提成金额
+
+            # 培训补贴
+            'training_allowance_quantity': 'C10', # 培训补贴数量
+            'training_allowance_rate': 'D10',     # 培训补贴单价
+            'training_allowance': 'E10',          # 培训补贴金额
+            
+            # 身体部位手工费
+            'body_manual_fee_quantity': 'C11', # 身体部位数量
+            'body_manual_fee_rate': 'D11',     # 身体部位单价
+            'body_manual_fee': 'E11',          # 身体部位手工费金额
+            
+            # 面部手工费
+            'face_manual_fee_quantity': 'C12', # 面部数量
+            'face_manual_fee_rate': 'D12',     # 面部单价
+            'face_manual_fee': 'E12',          # 面部手工费金额
+            
+            # 应发合计
+            'total_salary': 'E13'             # 应发合计
         },
         
-        # 手工费数量和单价映射
-        'manual_fee_details': {
-            'body_quantity': 'C11',     # 身体部位数量
-            'body_rate': 'D11',         # 身体部位单价
-            'face_quantity': 'C12',     # 面部数量
-            'face_rate': 'D12',         # 面部单价
-        },
+        # 考勤信息映射
+        # 'attendance_info': {
+        #     'work_days': 'G2',      # 上班天数
+        #     'rest_days': 'G3',      # 休息天数
+        #     'late_count': 'G4',     # 迟到次数
+        #     'training_days': 'G5',  # 培训天数
+        # },
         
         # 扣减项目映射  
         'deduction_items': {
-            'late_deduction': 'E16',    # 考勤扣款
-            'absent_deduction': 'E17',  # 迟到扣款
-            'social_security': 'E18',   # 社保
-            'personal_tax': 'E19',      # 个人所得税
-            'total_deduction': 'E20'    # 扣减小计
+            'absent_deduction_quantity': 'C16',  # 缺勤天数
+            'absent_deduction_rate': 'D16',      # 缺勤单价
+            'absent_deduction': 'E16',           # 缺勤扣款金额
+            'late_deduction_quantity': 'C17',    # 迟到次数
+            'late_deduction_rate': 'D17',        # 迟到单价
+            'late_deduction': 'E17',             # 迟到扣款金额
+            'social_security_quantity': 'C18',   # 社保数量
+            'social_security_rate': 'D18',       # 社保单价
+            'social_security': 'E18',            # 社保金额
+            'personal_tax_quantity': 'C19',      # 个税数量
+            'personal_tax_rate': 'D19',          # 个税单价
+            'personal_tax': 'E19',               # 个税金额
+            'total_deduction': 'E20'             # 扣减小计
         },
         
         # 实发工资
-        'net_salary': 'E23'
+        'net_salary': 'E22'
     }
 }
 
@@ -112,8 +154,34 @@ DEFAULT_SALARY_CONFIG = {
         'special_rates': {}  # 特殊人员浮动底薪
     },
     
-    # 提成比例配置
+    # 提成配置
+    'commission_config': {
+        # 专家提成配置（服务总监）
+        'expert_commission': {
+            'default_rate': 1.20,        # 默认专家提成比例 (%)
+            'default_quantity': 1,       # 默认专家提成数量
+            'special_rates': {},         # 特殊人员专家提成比例
+            'special_quantities': {}     # 特殊人员专家提成数量
+        },
+        # 服务提成配置（服务老师）
+        'service_commission': {
+            'default_rate': 1.50,        # 默认服务提成比例 (%)
+            'default_quantity': 1,       # 默认服务提成数量
+            'special_rates': {},         # 特殊人员服务提成比例
+            'special_quantities': {}     # 特殊人员服务提成数量
+        },
+        # 操作提成配置（操作老师）
+        'operation_commission': {
+            'default_rate': 0.80,        # 默认操作提成比例 (%)
+            'default_quantity': 1,       # 默认操作提成数量
+            'special_rates': {},         # 特殊人员操作提成比例
+            'special_quantities': {}     # 特殊人员操作提成数量
+        }
+    },
+    
+    # 提成比例配置（保持向后兼容）
     'commission_rates': {
+        'expert_rate': 1.20,     # 专家提成比例 (%)
         'service_rate': 1.50,    # 服务提成比例 (%)
         'operation_rate': 0.80   # 操作提成比例 (%)
     },
@@ -124,29 +192,31 @@ DEFAULT_SALARY_CONFIG = {
         'face_rate': 80    # 面部手工费单价  
     },
     
+
+    
     # 其他配置
     'other_config': {
         'training_allowance': 200,  # 培训补贴标准
-        'social_security_rate': 8.0,  # 社保扣除比例 (%)
-        'personal_tax_rate': 3.0      # 个人所得税比例 (%)
+        'social_security_rate': 505.26,  # 社保单价（元）
+        'personal_tax_rate': 3.0,      # 个人所得税比例 (%)
+        'base_monthly_rest_days': 4,   # 基础月休天数
+        'current_month_holiday_days': 0,  # 当月节日休息天数（可配置）
+        'late_deduction_rate': 20,     # 迟到扣款单价（正数）
     }
 }
 
 # 职业特殊配置
 JOB_SPECIFIC_CONFIG = {
     '服务总监': {
-        'base_multiplier': 1.5,     # 基础倍率
-        'commission_bonus': 0.2,    # 提成奖金
-        'special_allowance': 1000   # 特殊补贴
+        'default_base_salary': 8000,   # 默认基础底薪
+        'special_allowance': 1000      # 特殊补贴
     },
     '服务老师': {
-        'base_multiplier': 1.2,
-        'commission_bonus': 0.1,
+        'default_base_salary': 5000,   # 默认基础底薪
         'special_allowance': 500
     },
     '操作老师': {
-        'base_multiplier': 1.0,
-        'commission_bonus': 0.0,
+        'default_base_salary': 5000,   # 默认基础底薪
         'special_allowance': 0
     }
 }

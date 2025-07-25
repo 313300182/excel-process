@@ -233,12 +233,14 @@ class MainWindow:
                 # 使用after方法确保在主线程中更新UI
                 self.text_widget.after(0, append)
         
-        # 配置日志
+        # 获取根日志器并清除已有的处理器，避免重复输出
+        logger = logging.getLogger()
+        logger.handlers.clear()  # 清除所有已有的处理器
+        logger.setLevel(logging.INFO)
+        
+        # 配置UI日志处理器
         text_handler = TextHandler(self.log_text)
         text_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        
-        logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
         logger.addHandler(text_handler)
         
         # 添加控制台处理器
@@ -309,22 +311,23 @@ class MainWindow:
             existing_templates = getattr(self.salary_processor, 'template_paths', {})
             dialog = SalaryConfigDialog(self.root, current_config, existing_templates)
             
-            # 等待对话框关闭
-            self.root.wait_window(dialog.dialog)
+            result = dialog.show()
             
-            if dialog.result:
-                config, template_paths = dialog.result
+            if result:
+                # 分离模板路径和配置数据
+                template_paths = result.pop('template_paths', {})
+                config = result
                 
                 # 保存用户配置
                 if self.salary_processor.save_user_config(config):
-                    self.log_message("工资配置已保存", "INFO")
+                    self.log_message("✅ 工资配置已保存", "INFO")
                 else:
-                    self.log_message("工资配置保存失败", "ERROR")
+                    self.log_message("❌ 工资配置保存失败", "ERROR")
                     
                 # 设置模板路径
                 if template_paths:
                     self.salary_processor.set_template_paths(template_paths)
-                    self.log_message(f"已设置 {len(template_paths)} 个工资模板", "INFO")
+                    self.log_message(f"📁 已设置 {len(template_paths)} 个工资模板", "INFO")
                     
                     # 验证模板
                     validation_results = self.salary_processor.validate_templates()
@@ -332,6 +335,8 @@ class MainWindow:
                     if invalid_templates:
                         messagebox.showwarning("模板验证", 
                                              f"以下模板验证失败: {', '.join(invalid_templates)}")
+                    else:
+                        self.log_message("✅ 所有工资模板验证通过", "INFO")
                 else:
                     messagebox.showwarning("警告", "请至少设置一个工资模板文件")
                     

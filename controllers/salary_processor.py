@@ -505,12 +505,22 @@ class SalaryProcessorController:
                                 log_message(f"❌ 员工 {employee_name}: 没有找到职业类型 {job_type} 的模板文件", "ERROR")
                                 continue
                             
-                            # 从操作表获取手工费数据
-                            operation_data = self.operation_data.get(employee_name, {'body_count': 0, 'face_count': 0})
+                            # 从操作表获取完整数据（包括个人所得税）
+                            default_operation_data = {
+                                'body_count': 0, 
+                                'face_count': 0,
+                                'rest_days': 0,
+                                'actual_absent_days': 0,
+                                'late_count': 0,
+                                'training_days': 0,
+                                'work_days': 0,
+                                'personal_tax_amount': 0
+                            }
+                            operation_data = self.operation_data.get(employee_name, default_operation_data)
                             if employee_name in self.operation_data:
-                                log_message(f"📋 员工 {employee_name}: 从操作表获取手工费数据 - 部位{operation_data['body_count']}, 面部{operation_data['face_count']}")
+                                log_message(f"📋 员工 {employee_name}: 从操作表获取 - 部位{operation_data.get('body_count', 0)}, 面部{operation_data.get('face_count', 0)}, 个税{operation_data.get('personal_tax_amount', 0):.2f}元")
                             else:
-                                log_message(f"⚠️  员工 {employee_name}: 操作表中未找到，使用默认值", "WARNING")
+                                log_message(f"⚠️  员工 {employee_name}: 操作表中未找到，使用默认值 - 部位0, 面部0, 个税0元", "WARNING")
                             
                             # 构建员工数据
                             employee_data = {
@@ -686,12 +696,22 @@ class SalaryProcessorController:
                         log_callback(f"员工 {employee_name}: 没有找到职业类型 {job_type} 的模板文件", "ERROR")
                         continue
                     
-                    # 从操作表获取手工费数据
-                    operation_data = self.operation_data.get(employee_name, {'body_count': 0, 'face_count': 0})
+                    # 从操作表获取完整数据（包括个人所得税）
+                    default_operation_data = {
+                        'body_count': 0, 
+                        'face_count': 0,
+                        'rest_days': 0,
+                        'actual_absent_days': 0,
+                        'late_count': 0,
+                        'training_days': 0,
+                        'work_days': 0,
+                        'personal_tax_amount': 0
+                    }
+                    operation_data = self.operation_data.get(employee_name, default_operation_data)
                     if employee_name in self.operation_data:
-                        log_callback(f"📋 员工 {employee_name}: 从操作表获取 - 部位数量={operation_data['body_count']}, 面部数量={operation_data['face_count']}", "INFO")
+                        log_callback(f"📋 员工 {employee_name}: 从操作表获取 - 部位数量={operation_data.get('body_count', 0)}, 面部数量={operation_data.get('face_count', 0)}, 个税={operation_data.get('personal_tax_amount', 0):.2f}元", "INFO")
                     else:
-                        log_callback(f"⚠️  员工 {employee_name}: 操作表中未找到，使用默认值 - 部位数量=0, 面部数量=0", "WARNING")
+                        log_callback(f"⚠️  员工 {employee_name}: 操作表中未找到，使用默认值 - 部位数量=0, 面部数量=0, 个税=0元", "WARNING")
                     
                     # 重新构建最小化的数据结构
                     combined_data = {
