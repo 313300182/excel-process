@@ -138,7 +138,7 @@ class MainWindow:
                        variable=self.processing_mode, value="teacher",
                        command=self.on_mode_changed).grid(row=1, column=0, sticky=tk.W, padx=(10, 0))
 
-        ttk.Radiobutton(mode_frame, text="工资Excel处理（批量生成工资条）",
+        ttk.Radiobutton(mode_frame, text="工资Excel处理（生成汇总表 + 各员工工资条）",
                        variable=self.processing_mode, value="salary",
                        command=self.on_mode_changed).grid(row=2, column=0, sticky=tk.W, padx=(10, 0))
 
@@ -147,18 +147,8 @@ class MainWindow:
                                               command=self.open_salary_config)
         self.salary_config_button.grid(row=2, column=1, padx=(20, 0), pady=2)
         
-        # 工资输出模式选择 (仅在工资模式下显示)
-        self.salary_output_mode_frame = ttk.LabelFrame(mode_frame, text="工资输出模式", padding="5")
-        self.salary_output_mode_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(5, 0), padx=(10, 0))
-        
-        # 输出模式变量 - 默认使用单文件模式（包含汇总功能）
+        # 工资输出模式固定为单文件模式（包含汇总功能）
         self.salary_output_mode = tk.StringVar(value="single_file")
-        
-        ttk.Radiobutton(self.salary_output_mode_frame, text="每个员工单独文件",
-                       variable=self.salary_output_mode, value="separate").grid(row=0, column=0, sticky=tk.W, padx=(10, 0))
-        
-        ttk.Radiobutton(self.salary_output_mode_frame, text="所有员工在一个文件（每人一个Sheet + 汇总表）",
-                       variable=self.salary_output_mode, value="single_file").grid(row=0, column=1, sticky=tk.W, padx=(20, 0))
 
         # 文件信息显示
         info_frame = ttk.LabelFrame(main_frame, text="文件信息", padding="5")
@@ -406,7 +396,7 @@ class MainWindow:
             self.salary_config_button.grid_remove()
             self.operation_table_label.grid_remove()
             self.operation_table_frame.grid_remove()
-            self.salary_output_mode_frame.grid_remove()
+
         elif mode == "teacher":
             # 老师分组模式 - 隐藏模板文件选择和工资相关界面
             self.template_label.grid_remove()
@@ -414,7 +404,7 @@ class MainWindow:
             self.salary_config_button.grid_remove()
             self.operation_table_label.grid_remove()
             self.operation_table_frame.grid_remove()
-            self.salary_output_mode_frame.grid_remove()
+
         elif mode == "salary":
             # 工资处理模式 - 隐藏模板文件选择，显示工资相关界面
             self.template_label.grid_remove()
@@ -422,7 +412,7 @@ class MainWindow:
             self.salary_config_button.grid()
             self.operation_table_label.grid()
             self.operation_table_frame.grid()
-            self.salary_output_mode_frame.grid()
+
             
         # 重新验证目录以更新文件信息
         if self.source_dir.get():
@@ -616,35 +606,18 @@ class MainWindow:
             
             self.log_message("✅ 处理器状态验证通过", "INFO")
             
-            # 获取用户选择的输出模式
-            output_mode = self.salary_output_mode.get()
-            self.log_message(f"📄 输出模式: {output_mode}", "INFO")
-            
             # 强制更新UI，让用户看到进度
             self.root.update()
             
-            # 根据输出模式选择处理方法
-            if output_mode == "single_file":
-                # 单个文件模式 - 所有员工在一个Excel文件的不同Sheet中
-                self.log_message("📋 使用单文件多Sheet模式处理...", "INFO")
-                
-                result = self.salary_processor.process_files_to_single_excel(
-                    source_dir=source_dir,
-                    output_dir=output_dir,
-                    progress_callback=self.update_salary_progress,
-                    log_callback=self.log_message
-                )
-            else:
-                # 分离文件模式 - 每个员工单独文件（原有模式）
-                self.log_message("📋 使用分离文件模式处理...", "INFO")
-                
-                result = self.salary_processor.process_files(
-                    source_dir=source_dir,
-                    output_dir=output_dir,
-                    progress_callback=self.update_salary_progress,
-                    log_callback=self.log_message,
-                    max_workers=1
-                )
+            # 使用单文件多Sheet模式处理（包含汇总表）
+            self.log_message("📋 使用单文件多Sheet模式处理（包含汇总表）...", "INFO")
+            
+            result = self.salary_processor.process_files_to_single_excel(
+                source_dir=source_dir,
+                output_dir=output_dir,
+                progress_callback=self.update_salary_progress,
+                log_callback=self.log_message
+            )
             
             self.log_message("🔄 处理器执行完毕，准备完成回调", "INFO")
             
@@ -688,53 +661,28 @@ class MainWindow:
         try:
             self.reset_ui_state()
             
-            # 根据输出模式显示不同的结果信息
-            output_mode = self.salary_output_mode.get()
+            # 单文件模式的结果处理（汇总表 + 各员工工资条）
+            success = result.get('success', False)
+            processed_employees = result.get('processed_employees', 0)
+            total_employees = result.get('total_employees', 0)
+            processed_files = result.get('processed_files', 0)
+            output_file = result.get('output_file', '')
             
-            if output_mode == "single_file":
-                # 单文件模式的结果处理
-                success = result.get('success', False)
-                processed_employees = result.get('processed_employees', 0)
-                total_employees = result.get('total_employees', 0)
-                processed_files = result.get('processed_files', 0)
-                output_file = result.get('output_file', '')
-                
-                self.log_message(f"工资处理完成: 处理员工 {processed_employees}人, 来源文件 {processed_files}个", "INFO")
-                
-                if result.get('errors'):
-                    for error in result['errors'][:5]:  # 只显示前5个错误
-                        self.log_message(f"错误: {error}", "ERROR")
-                        
-                # 显示完成消息
-                if success and processed_employees > 0:
-                    self.progress_text.set(f"完成: 汇总 {processed_employees} 人工资单")
-                    messagebox.showinfo("处理完成",
-                        f"工资汇总处理完成！\n\n处理员工: {processed_employees} 人\n来源文件: {processed_files} 个\n\n汇总文件已保存:\n{output_file}")
-                else:
-                    self.progress_text.set("处理失败")
-                    messagebox.showerror("处理失败", 
-                        f"工资汇总处理失败！\n\n详细错误请查看日志。")
+            self.log_message(f"工资处理完成: 处理员工 {processed_employees}人, 来源文件 {processed_files}个", "INFO")
+            
+            if result.get('errors'):
+                for error in result['errors'][:5]:  # 只显示前5个错误
+                    self.log_message(f"错误: {error}", "ERROR")
+                    
+            # 显示完成消息
+            if success and processed_employees > 0:
+                self.progress_text.set(f"完成: 汇总 {processed_employees} 人工资单")
+                messagebox.showinfo("处理完成",
+                    f"工资汇总处理完成！\n\n处理员工: {processed_employees} 人\n来源文件: {processed_files} 个\n\n📊 已生成汇总表和各员工工资条\n\n汇总文件已保存:\n{output_file}")
             else:
-                # 分离文件模式的结果处理（原有逻辑）
-                success_count = result.get('processed_files', 0)
-                failed_count = result.get('failed_files', 0)
-                total_count = result.get('total_files', 0)
-                
-                self.log_message(f"工资处理完成: 成功 {success_count}, 失败 {failed_count}, 总计 {total_count}", "INFO")
-                
-                if result.get('errors'):
-                    for error in result['errors'][:5]:  # 只显示前5个错误
-                        self.log_message(f"错误: {error}", "ERROR")
-                        
-                # 显示完成消息
-                if failed_count > 0:
-                    self.progress_text.set(f"完成: 成功 {success_count}, 失败 {failed_count}")
-                    messagebox.showwarning("处理完成",
-                        f"工资处理完成！\n\n成功: {success_count} 个文件\n失败: {failed_count} 个文件\n\n详细信息请查看日志")
-                else:
-                    self.progress_text.set(f"全部完成: {success_count} 个文件")
-                    messagebox.showinfo("处理完成",
-                        f"工资处理完成！\n\n成功处理 {success_count} 个文件\n\n输出文件已保存到指定目录。")
+                self.progress_text.set("处理失败")
+                messagebox.showerror("处理失败", 
+                    f"工资汇总处理失败！\n\n详细错误请查看日志。")
                     
         except Exception as e:
             self.log_message(f"处理完成回调出错: {str(e)}", "ERROR")

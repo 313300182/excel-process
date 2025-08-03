@@ -1046,21 +1046,21 @@ class SalaryExcelWriter:
             from datetime import datetime
             current_date = datetime.now().strftime('%Y.%m.%d')
             
-            # 标题行 - 合并单元格
-            summary_ws.merge_cells('A1:P1')
+            # 标题行 - 合并单元格（删除加班列后总共19列，A到S）
+            summary_ws.merge_cells('A1:S1')
             summary_ws['A1'] = f"{current_month}工资明细表"
             summary_ws['A1'].font = Font(size=16, bold=True)
             summary_ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
             
             # 制表日期
-            summary_ws.merge_cells('M2:P2')
-            summary_ws['M2'] = f"制表日期：{current_date}"
-            summary_ws['M2'].alignment = Alignment(horizontal='center')
+            summary_ws.merge_cells('P2:S2')
+            summary_ws['P2'] = f"制表日期：{current_date}"
+            summary_ws['P2'].alignment = Alignment(horizontal='center')
             
             # 表头行
             headers = [
                 '序号', '姓名', '部门', '基本工资', '浮动工资', '业绩提成', '管理提成',
-                '手工费', '加班', '其他', '扣保险费', '扣个税', '休假扣款', '其他扣款',
+                '手工费', '培训补贴', '扣保险费', '扣个税', '休假扣款', '其他扣款',
                 '总扣额', '合计工资', '应下对公', '实色发儿童', '银行发', '公司交个'
             ]
             
@@ -1083,9 +1083,9 @@ class SalaryExcelWriter:
             # 初始化汇总数据
             totals = {
                 'base_salary': 0, 'floating_salary': 0, 'commission': 0, 'management_commission': 0,
-                'manual_fee': 0, 'overtime': 0, 'other_income': 0, 'insurance_deduction': 0,
-                'tax_deduction': 0, 'leave_deduction': 0, 'other_deduction': 0,
-                'total_deduction': 0, 'total_salary': 0, 'net_salary': 0, 'bank_pay': 0, 'company_tax': 0
+                'manual_fee': 0, 'training_allowance': 0, 'insurance_deduction': 0,
+                'tax_deduction': 0, 'leave_deduction': 0, 'late_deduction': 0,
+                'total_deduction': 0, 'net_salary': 0
             }
             
             # 填充员工数据
@@ -1111,33 +1111,35 @@ class SalaryExcelWriter:
                 manual_fee = (calculated.get('body_manual_fee', 0) + 
                              calculated.get('face_manual_fee', 0))
                 
-                # 扣减项目
-                insurance = calculated.get('social_security', 0)
-                tax = calculated.get('personal_tax', 0)
-                leave_deduction = calculated.get('absent_deduction', 0)
-                other_deduction = calculated.get('late_deduction', 0)
+                # 培训补贴
+                training_allowance = calculated.get('training_allowance', 0)
                 
-                total_deduction = insurance + tax + leave_deduction + other_deduction
+                # 扣减项目（保持负数）
+                insurance = calculated.get('social_security', 0)  # 已经是负数
+                tax = calculated.get('personal_tax', 0)           # 已经是负数
+                leave_deduction = calculated.get('absent_deduction', 0)  # 缺勤扣款
+                late_deduction = calculated.get('late_deduction', 0)     # 迟到扣款
+                
+                total_deduction = insurance + tax + leave_deduction + late_deduction
                 net_salary = calculated.get('net_salary', 0)
                 
-                # 写入数据行
+                # 构建数据行（删除加班列，其他改为培训补贴）
                 row_data = [
                     idx,                        # 序号
                     emp_data['name'],          # 姓名
                     emp_data['job_type'],      # 部门
                     base_salary,               # 基本工资
                     floating_salary,           # 浮动工资
-                    commission,                # 业绩提成
+                    commission,                # 业绩提成（按职业区分）
                     0,                         # 管理提成
                     manual_fee,                # 手工费
-                    0,                         # 加班
-                    0,                         # 其他
-                    abs(insurance),            # 扣保险费
-                    abs(tax),                  # 扣个税
-                    abs(leave_deduction),      # 休假扣款
-                    abs(other_deduction),      # 其他扣款
-                    abs(total_deduction),      # 总扣额
-                    base_salary + floating_salary + commission + manual_fee,  # 合计工资
+                    training_allowance,        # 培训补贴
+                    insurance,                 # 扣保险费（负数）
+                    tax,                       # 扣个税（负数）
+                    leave_deduction,           # 休假扣款（缺勤扣款，负数）
+                    late_deduction,            # 其他扣款（迟到扣款，负数）
+                    total_deduction,           # 总扣额（负数）
+                    f"=D{row_num}+E{row_num}+F{row_num}+G{row_num}+H{row_num}+I{row_num}",  # 合计工资（公式）
                     0,                         # 应下对公
                     net_salary,                # 实色发儿童
                     0,                         # 银行发
@@ -1149,12 +1151,12 @@ class SalaryExcelWriter:
                 totals['floating_salary'] += floating_salary
                 totals['commission'] += commission
                 totals['manual_fee'] += manual_fee
-                totals['insurance_deduction'] += abs(insurance)
-                totals['tax_deduction'] += abs(tax)
-                totals['leave_deduction'] += abs(leave_deduction)
-                totals['other_deduction'] += abs(other_deduction)
-                totals['total_deduction'] += abs(total_deduction)
-                totals['total_salary'] += (base_salary + floating_salary + commission + manual_fee)
+                totals['training_allowance'] += training_allowance
+                totals['insurance_deduction'] += insurance  # 保持负数
+                totals['tax_deduction'] += tax              # 保持负数
+                totals['leave_deduction'] += leave_deduction  # 保持负数
+                totals['late_deduction'] += late_deduction    # 保持负数
+                totals['total_deduction'] += total_deduction  # 保持负数
                 totals['net_salary'] += net_salary
                 
                 # 写入单元格
@@ -1179,30 +1181,33 @@ class SalaryExcelWriter:
             summary_ws.cell(row=subtotal_row, column=1).value = "小计"
             summary_ws.cell(row=subtotal_row, column=1).font = Font(bold=True)
             
-            # 小计数据 - 真正的汇总计算
-            subtotal_data = [
-                totals['base_salary'],           # 基本工资
-                totals['floating_salary'],      # 浮动工资
-                totals['commission'],            # 业绩提成
-                0,                               # 管理提成
-                totals['manual_fee'],            # 手工费
-                0,                               # 加班
-                0,                               # 其他
-                totals['insurance_deduction'],   # 扣保险费
-                totals['tax_deduction'],         # 扣个税
-                totals['leave_deduction'],       # 休假扣款
-                totals['other_deduction'],       # 其他扣款
-                totals['total_deduction'],       # 总扣额
-                totals['total_salary'],          # 合计工资
-                0,                               # 应下对公
-                totals['net_salary'],            # 实色发儿童
-                0,                               # 银行发
-                0                                # 公司交个
+            # 小计行使用SUM公式
+            data_start_row = 4
+            data_end_row = len(summary_data) + 3
+            
+            # 从第4列开始填充小计公式
+            subtotal_columns = [
+                f"=SUM(D{data_start_row}:D{data_end_row})",  # 基本工资
+                f"=SUM(E{data_start_row}:E{data_end_row})",  # 浮动工资
+                f"=SUM(F{data_start_row}:F{data_end_row})",  # 业绩提成
+                0,                                           # 管理提成
+                f"=SUM(H{data_start_row}:H{data_end_row})",  # 手工费
+                f"=SUM(I{data_start_row}:I{data_end_row})",  # 培训补贴
+                f"=SUM(J{data_start_row}:J{data_end_row})",  # 扣保险费
+                f"=SUM(K{data_start_row}:K{data_end_row})",  # 扣个税
+                f"=SUM(L{data_start_row}:L{data_end_row})",  # 休假扣款
+                f"=SUM(M{data_start_row}:M{data_end_row})",  # 其他扣款（迟到）
+                f"=SUM(N{data_start_row}:N{data_end_row})",  # 总扣额
+                f"=SUM(O{data_start_row}:O{data_end_row})",  # 合计工资
+                0,                                           # 应下对公
+                f"=SUM(Q{data_start_row}:Q{data_end_row})",  # 实色发儿童
+                0,                                           # 银行发
+                0                                            # 公司交个
             ]
             
-            for col, value in enumerate(subtotal_data, 4):
+            for col, formula in enumerate(subtotal_columns, 4):
                 cell = summary_ws.cell(row=subtotal_row, column=col)
-                cell.value = value
+                cell.value = formula
                 cell.font = Font(bold=True)
                 cell.number_format = '#,##0.00'
                 cell.border = Border(
@@ -1220,30 +1225,29 @@ class SalaryExcelWriter:
             summary_ws.cell(row=total_row, column=1).value = "合计(元)"
             summary_ws.cell(row=total_row, column=1).font = Font(bold=True)
             
-            # 合计数据（元）- 与小计相同，真正的汇总计算
-            total_data = [
-                totals['base_salary'],           # 基本工资
-                totals['floating_salary'],      # 浮动工资
-                totals['commission'],            # 业绩提成
-                0,                               # 管理提成
-                totals['manual_fee'],            # 手工费
-                0,                               # 加班
-                0,                               # 其他
-                totals['insurance_deduction'],   # 扣保险费
-                totals['tax_deduction'],         # 扣个税
-                totals['leave_deduction'],       # 休假扣款
-                totals['other_deduction'],       # 其他扣款
-                totals['total_deduction'],       # 总扣额
-                totals['total_salary'],          # 合计工资
-                0,                               # 应下对公
-                totals['net_salary'],            # 实色发儿童
-                0,                               # 银行发
-                0                                # 公司交个
+            # 合计行使用引用小计行的公式
+            total_columns = [
+                f"=D{subtotal_row}",    # 基本工资
+                f"=E{subtotal_row}",    # 浮动工资
+                f"=F{subtotal_row}",    # 业绩提成
+                0,                      # 管理提成
+                f"=H{subtotal_row}",    # 手工费
+                f"=I{subtotal_row}",    # 培训补贴
+                f"=J{subtotal_row}",    # 扣保险费
+                f"=K{subtotal_row}",    # 扣个税
+                f"=L{subtotal_row}",    # 休假扣款
+                f"=M{subtotal_row}",    # 其他扣款（迟到）
+                f"=N{subtotal_row}",    # 总扣额
+                f"=O{subtotal_row}",    # 合计工资
+                0,                      # 应下对公
+                f"=Q{subtotal_row}",    # 实色发儿童
+                0,                      # 银行发
+                0                       # 公司交个
             ]
             
-            for col, value in enumerate(total_data, 4):
+            for col, formula in enumerate(total_columns, 4):
                 cell = summary_ws.cell(row=total_row, column=col)
-                cell.value = value
+                cell.value = formula
                 cell.font = Font(bold=True, color='FF0000')  # 红色字体
                 cell.number_format = '#,##0.00'
                 cell.border = Border(
@@ -1256,8 +1260,8 @@ class SalaryExcelWriter:
                 # 合计行背景色
                 cell.fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
             
-            # 设置列宽
-            column_widths = [6, 12, 10, 10, 10, 10, 10, 10, 8, 8, 10, 10, 10, 10, 10, 12, 10, 12, 10, 10]
+            # 设置列宽（删除了加班列，现在有19列）
+            column_widths = [6, 12, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 12, 10, 12, 10, 10]
             for col, width in enumerate(column_widths, 1):
                 column_letter = get_column_letter(col)
                 summary_ws.column_dimensions[column_letter].width = width
