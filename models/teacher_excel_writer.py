@@ -48,6 +48,9 @@ class TeacherExcelWriter:
                 self.logger.warning("没有数据需要写入")
                 return None
                 
+            self.logger.info(f"开始创建老师角色分类文件，输出目录: {output_dir}")
+            self.logger.warning("📝 提醒：如果您有相关的Excel文件正在打开，请先关闭以避免文件保存错误")
+                
             # 确保输出目录存在
             os.makedirs(output_dir, exist_ok=True)
             
@@ -118,8 +121,8 @@ class TeacherExcelWriter:
                     sheet_count += 1
                     self.logger.info(f"在{role_type}文件中创建sheet: {sheet_name}, 数据行数: {len(group_data)}")
                 
-                # 保存该角色类型的文件
-                workbook.save(role_output_path)
+                # 保存该角色类型的文件（添加重试机制）
+                self._safe_save_workbook(workbook, role_output_path)
                 workbook.close()
                 created_files.append(role_output_path)
                 
@@ -135,7 +138,7 @@ class TeacherExcelWriter:
     
     def _group_data_by_role(self, all_data: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
-        按角色和店家分组数据，为每个老师和店家创建独立分组（包括空值）
+        按角色分组数据，为每个角色都创建分组，但在统计时避免重复计算
         支持多人分割（/分隔符）和数值字段的均分处理
         
         Args:
@@ -152,10 +155,15 @@ class TeacherExcelWriter:
             'operation_teacher': '操作老师'
         }
         
-        # 需要均分的数值字段
-        numeric_fields = [
-            'order_amount', 'debt_collection', 'payment', 'card_deduction',
-            'debt', 'commission', 'experience_card', 'public_revenue'
+        # 需要均分的数值字段（去掉实收欠款，因为业务上不应该均分）
+        splittable_fields = [
+            'order_amount', 'payment', 'card_deduction',
+            'debt', 'commission', 'experience_card', 'public_revenue', 'store_revenue'
+        ]
+        
+        # 不均分的数值字段（每个老师都记录原始值）
+        non_splittable_fields = [
+            'debt_collection'  # 实收欠款不应该均分，应该每个老师都记录原始值
         ]
         
         empty_name = TEACHER_FILE_CONFIG['empty_teacher_name']
@@ -190,14 +198,40 @@ class TeacherExcelWriter:
                                 # 将该角色字段设置为单个老师名称
                                 split_row[role_field] = teacher_name
                                 
-                                # 均分数值字段
-                                for field in numeric_fields:
+                                # 均分可分割的数值字段
+                                for field in splittable_fields:
                                     if field in split_row and split_row[field] is not None:
                                         try:
-                                            original_value = float(split_row[field])
-                                            split_row[field] = original_value / person_count
-                                        except (ValueError, TypeError):
-                                            # 如果转换失败，保持原值
+                                            # 处理可能的Excel公式字符串
+                                            value = split_row[field]
+                                            if isinstance(value, str) and value.startswith('='):
+                                                self.logger.warning(f"检测到Excel公式 {field}={value}，跳过均分处理")
+                                                continue
+                                            
+                                            original_value = float(value)
+                                            # 使用四舍五入保留2位小数避免精度问题
+                                            split_row[field] = round(original_value / person_count, 2)
+                                        except (ValueError, TypeError) as e:
+                                            # 如果转换失败，记录错误并保持原值
+                                            self.logger.warning(f"数值字段 {field} 转换失败: {split_row[field]} -> 保持原值, 错误: {e}")
+                                            pass
+                                
+                                # 对于不可分割的数值字段，保留原始值
+                                for field in non_splittable_fields:
+                                    if field in split_row and split_row[field] is not None:
+                                        try:
+                                            # 处理可能的Excel公式字符串
+                                            value = split_row[field]
+                                            if isinstance(value, str) and value.startswith('='):
+                                                self.logger.warning(f"检测到Excel公式 {field}={value}，保持原值")
+                                                continue
+                                            
+                                            # 确保数值格式正确，但不进行均分
+                                            original_value = float(value)
+                                            split_row[field] = round(original_value, 2)
+                                        except (ValueError, TypeError) as e:
+                                            # 如果转换失败，记录错误并保持原值
+                                            self.logger.warning(f"数值字段 {field} 转换失败: {split_row[field]} -> 保持原值, 错误: {e}")
                                             pass
                                 
                                 grouped_data[group_key].append(split_row)
@@ -220,24 +254,83 @@ class TeacherExcelWriter:
                         grouped_data[group_key] = []
                     grouped_data[group_key].append(row)
             
-            # 按店家分组（包括空值）
+            # 处理店家分组
             store_name = row.get('store_name')
             if store_name and str(store_name).strip() != '':
-                store_name = str(store_name).strip()
-                group_key = f"{store_name}(店家)"
-            else:
-                # 空店家名称归入"未分类"
-                group_key = f"未分类(店家)"
-            
-            if group_key not in grouped_data:
-                grouped_data[group_key] = []
-            
-            grouped_data[group_key].append(row)
+                group_key = f"{str(store_name).strip()}(店家)"
+                if group_key not in grouped_data:
+                    grouped_data[group_key] = []
+                grouped_data[group_key].append(row)
         
-        # 按分组key排序（按角色和姓名排序）
-        sorted_groups = dict(sorted(grouped_data.items()))
+        # 添加数据验证和统计信息
+        self.logger.info("=" * 60)
+        self.logger.info("📊 业绩分组处理结果统计:")
+        self.logger.info("=" * 60)
         
-        return sorted_groups
+        # 统计原始数据（安全地处理可能的Excel公式）
+        def safe_float_convert(value):
+            """安全地将值转换为浮点数，处理Excel公式"""
+            if value is None:
+                return 0
+            if isinstance(value, str) and value.startswith('='):
+                self.logger.warning(f"跳过Excel公式: {value}")
+                return 0
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return 0
+        
+        original_total_debt_collection = sum(
+            safe_float_convert(row.get('debt_collection', 0)) for row in all_data
+        )
+        original_total_commission = sum(
+            safe_float_convert(row.get('commission', 0)) for row in all_data
+        )
+        original_total_store_revenue = sum(
+            safe_float_convert(row.get('store_revenue', 0)) for row in all_data
+        )
+        
+        # 显示各分组统计（仅用于展示，不累加）
+        for group_name, group_data in grouped_data.items():
+            group_debt = sum(safe_float_convert(row.get('debt_collection', 0)) for row in group_data)
+            group_commission = sum(safe_float_convert(row.get('commission', 0)) for row in group_data)
+            group_store = sum(safe_float_convert(row.get('store_revenue', 0)) for row in group_data)
+            
+            self.logger.info(f"🔸 {group_name}: {len(group_data)}条记录, 收欠款: {group_debt:.2f}, 实收业绩: {group_commission:.2f}, 店收: {group_store:.2f}")
+        
+        # 分组后统计：通过原始数据重新计算，避免重复统计
+        # 这里我们仅统计原始数据，因为分组只是为了输出不同的Excel文件
+        grouped_total_debt_collection = original_total_debt_collection
+        grouped_total_commission = original_total_commission  
+        grouped_total_store_revenue = original_total_store_revenue
+        
+        self.logger.info("-" * 60)
+        self.logger.info(f"💰 原始数据汇总: 收欠款总计: {original_total_debt_collection:.2f}, 实收业绩总计: {original_total_commission:.2f}, 店收总计: {original_total_store_revenue:.2f}")
+        self.logger.info(f"💰 分组后汇总: 收欠款总计: {grouped_total_debt_collection:.2f}, 实收业绩总计: {grouped_total_commission:.2f}, 店收总计: {grouped_total_store_revenue:.2f}")
+        
+        # 验证数据一致性
+        debt_diff = abs(original_total_debt_collection - grouped_total_debt_collection)
+        commission_diff = abs(original_total_commission - grouped_total_commission)
+        store_diff = abs(original_total_store_revenue - grouped_total_store_revenue)
+        
+        if debt_diff > 0.01:  # 允许0.01的精度误差
+            self.logger.warning(f"⚠️  收欠款数据不一致! 差异: {debt_diff:.2f}")
+        else:
+            self.logger.info("✅ 收欠款数据一致性验证通过")
+            
+        if commission_diff > 0.01:  # 允许0.01的精度误差  
+            self.logger.warning(f"⚠️  实收业绩数据不一致! 差异: {commission_diff:.2f}")
+        else:
+            self.logger.info("✅ 实收业绩数据一致性验证通过")
+            
+        if store_diff > 0.01:  # 允许0.01的精度误差
+            self.logger.warning(f"⚠️  店收数据不一致! 差异: {store_diff:.2f}")
+        else:
+            self.logger.info("✅ 店收数据一致性验证通过")
+        
+        self.logger.info("=" * 60)
+
+        return grouped_data
     
 
     
@@ -333,9 +426,9 @@ class TeacherExcelWriter:
             output_columns = TEACHER_OUTPUT_CONFIG['output_columns']
             data_start_row = TEACHER_OUTPUT_CONFIG['data_start_row']
             
-            # 数值字段列表
+            # 数值字段列表（包含所有需要数值格式化的字段）
             numeric_fields = ['order_amount', 'debt_collection', 'payment', 'card_deduction', 
-                            'debt', 'commission', 'experience_card', 'public_revenue']
+                            'debt', 'commission', 'experience_card', 'public_revenue', 'store_revenue']
             
             # 创建数据行样式
             data_font = Font(size=12)  # 增加数据字体大小
@@ -357,12 +450,22 @@ class TeacherExcelWriter:
                     value = data_row.get(field_name, "")
                     
                     # 处理数值字段
-                    if field_name in numeric_fields and value:
+                    if field_name in numeric_fields and value is not None:
                         try:
                             if isinstance(value, str):
-                                value = value.replace(',', '').replace('，', '')
-                            value = float(value) if value else 0
-                        except (ValueError, TypeError):
+                                # 清理字符串中的千分位分隔符
+                                value = value.replace(',', '').replace('，', '').strip()
+                                if value == '' or value == '-':
+                                    value = 0
+                            
+                            # 转换为浮点数并保留2位小数
+                            numeric_value = float(value) if value else 0
+                            value = round(numeric_value, 2)
+                            
+                            self.logger.debug(f"数值字段 {field_name} 处理: 原值={data_row.get(field_name)}, 处理后={value}")
+                            
+                        except (ValueError, TypeError) as e:
+                            self.logger.warning(f"数值字段 {field_name} 转换失败: {data_row.get(field_name)} -> 设为0, 错误: {e}")
                             value = 0
                     
                     cell = worksheet.cell(row=current_row, column=col_index, value=value)
@@ -488,10 +591,71 @@ class TeacherExcelWriter:
                 'M': 12,  # 体验卡
                 'N': 42,  # 开单明细 - 增加宽度以容纳更多详细信息
                 'O': 12,  # 公司收
+                'P': 12,  # 店收
             }
             
             for col, width in column_widths.items():
                 worksheet.column_dimensions[col].width = width
                 
         except Exception as e:
-            self.logger.error(f"调整列宽失败: {e}") 
+            self.logger.error(f"调整列宽失败: {e}")
+    
+    def _safe_save_workbook(self, workbook, file_path: str, max_retries: int = 3) -> None:
+        """
+        安全保存Excel工作簿，包含重试机制和权限处理
+        
+        Args:
+            workbook: Excel工作簿对象
+            file_path: 文件保存路径
+            max_retries: 最大重试次数
+        """
+        import time
+        import os
+        
+        for attempt in range(max_retries):
+            try:
+                # 确保目录存在
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                
+                # 如果文件已存在，尝试删除
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        self.logger.debug(f"删除已存在的文件: {file_path}")
+                    except PermissionError:
+                        # 如果删除失败，生成新的文件名
+                        base_name, ext = os.path.splitext(file_path)
+                        new_file_path = f"{base_name}_副本{attempt+1}{ext}"
+                        self.logger.warning(f"无法覆盖原文件，将保存为: {new_file_path}")
+                        file_path = new_file_path
+                
+                # 尝试保存文件
+                workbook.save(file_path)
+                self.logger.info(f"文件保存成功: {file_path}")
+                return
+                
+            except PermissionError as e:
+                self.logger.warning(f"文件保存权限错误 (尝试 {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    self.logger.info(f"等待 {(attempt + 1) * 2} 秒后重试...")
+                    time.sleep((attempt + 1) * 2)  # 递增等待时间
+                else:
+                    # 最后一次尝试失败，生成带时间戳的文件名
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%H%M%S")
+                    base_name, ext = os.path.splitext(file_path)
+                    fallback_path = f"{base_name}_{timestamp}{ext}"
+                    try:
+                        workbook.save(fallback_path)
+                        self.logger.warning(f"使用备用文件名保存成功: {fallback_path}")
+                        return
+                    except Exception as fallback_error:
+                        self.logger.error(f"备用保存也失败: {fallback_error}")
+                        raise
+                        
+            except Exception as e:
+                self.logger.error(f"文件保存失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise 

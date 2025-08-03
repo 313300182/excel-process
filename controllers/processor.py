@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from models.excel_reader import ExcelReader
 from models.excel_writer import ExcelWriter
+from models.summary_writer import SummaryWriter
 from config.settings import SUPPORTED_EXTENSIONS, OUTPUT_CONFIG
 
 
@@ -22,6 +23,7 @@ class ProcessorController:
         self.logger = logging.getLogger(__name__)
         self.reader = ExcelReader()
         self.writer = ExcelWriter()
+        self.summary_writer = SummaryWriter()
         self.is_processing = False
         self.should_stop = False
     
@@ -151,6 +153,7 @@ class ProcessorController:
                 
                 success_files = []
                 failed_files = []
+                all_data = []  # 收集所有处理的数据用于汇总
                 total_files = len(excel_files)
                 
                 self.logger.info(f"开始批量处理 {total_files} 个文件，顺序处理模式")
@@ -173,6 +176,14 @@ class ProcessorController:
                         result = self.process_single_file(file_path, output_dir)
                         if result:
                             success_files.append(result)
+                            # 收集数据用于汇总
+                            try:
+                                file_data = self.reader.read_data(file_path)
+                                if file_data:
+                                    all_data.extend(file_data)
+                            except Exception as data_e:
+                                self.logger.warning(f"收集汇总数据失败 {file_path}: {data_e}")
+                            
                             self.logger.info(f"处理成功 ({i+1}/{total_files}): {os.path.basename(file_path)}")
                         else:
                             failed_files.append(file_path)
@@ -184,6 +195,29 @@ class ProcessorController:
                     # 添加小延迟，让UI有机会响应
                     import time
                     time.sleep(0.1)
+                
+                # 生成汇总文件 - 保存到输出文件夹的上一级目录
+                if success_files and all_data:
+                    try:
+                        # 使用第一个成功处理的文件名作为汇总文件的基础名称
+                        base_filename = os.path.basename(excel_files[0]) if excel_files else "汇总"
+                        
+                        # 汇总文件保存到输出目录的上一级目录
+                        summary_output_dir = os.path.dirname(output_dir)
+                        if not summary_output_dir:  # 如果上一级是空，使用当前目录
+                            summary_output_dir = "."
+                        
+                        summary_path = self.summary_writer.create_summary_file(
+                            all_data, summary_output_dir, base_filename
+                        )
+                        if summary_path:
+                            success_files.append(summary_path)
+                            self.logger.info(f"成功创建汇总文件: {summary_path}")
+                            self.logger.info(f"汇总文件保存位置: {summary_output_dir}")
+                        else:
+                            self.logger.warning("汇总文件创建失败")
+                    except Exception as e:
+                        self.logger.error(f"创建汇总文件时发生错误: {e}")
                 
                 # 处理完成回调
                 if complete_callback:

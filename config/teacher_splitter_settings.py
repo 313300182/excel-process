@@ -28,6 +28,7 @@ TEACHER_SOURCE_CONFIG = {
         'experience_card': 13,  # M列 - 体验卡
         'notes': 14,            # N列 - 开单明细
         'public_revenue': 15,   # O列 - 公司收
+        'store_revenue': 16,    # P列 - 店收
     },
     
     # 老师角色列 - 用于分组
@@ -69,6 +70,7 @@ TEACHER_OUTPUT_CONFIG = {
         'experience_card': 13,  # M列 - 体验卡
         'notes': 14,            # N列 - 开单明细
         'public_revenue': 15,   # O列 - 公司收
+        'store_revenue': 16,    # P列 - 店收  
     },
     
     # 数据起始行（从第2行开始，保留表头）
@@ -91,6 +93,7 @@ TEACHER_OUTPUT_CONFIG = {
         (1, 13): '体验卡',
         (1, 14): '开单明细',
         (1, 15): '公司收',
+        (1, 16): '店收',
     },
     
     # 是否添加合计行
@@ -108,6 +111,7 @@ TEACHER_OUTPUT_CONFIG = {
         'commission': 12,       # 实收业绩合计
         'experience_card': 13,  # 体验卡合计
         'public_revenue': 15,   # 公司收合计
+        'store_revenue': 16,    # 店收合计
     }
 }
 

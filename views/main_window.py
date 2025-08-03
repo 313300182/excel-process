@@ -130,7 +130,7 @@ class MainWindow:
         mode_frame = ttk.LabelFrame(main_frame, text="处理模式", padding="5")
         mode_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 5))
 
-        ttk.Radiobutton(mode_frame, text="国韩报税Excel处理（数据提取到模板）",
+        ttk.Radiobutton(mode_frame, text="国韩报税Excel处理（数据提取到模板 + 汇总文件）",
                        variable=self.processing_mode, value="normal",
                        command=self.on_mode_changed).grid(row=0, column=0, sticky=tk.W, padx=(10, 0))
 
@@ -151,13 +151,13 @@ class MainWindow:
         self.salary_output_mode_frame = ttk.LabelFrame(mode_frame, text="工资输出模式", padding="5")
         self.salary_output_mode_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(5, 0), padx=(10, 0))
         
-        # 输出模式变量
-        self.salary_output_mode = tk.StringVar(value="separate")
+        # 输出模式变量 - 默认使用单文件模式（包含汇总功能）
+        self.salary_output_mode = tk.StringVar(value="single_file")
         
         ttk.Radiobutton(self.salary_output_mode_frame, text="每个员工单独文件",
                        variable=self.salary_output_mode, value="separate").grid(row=0, column=0, sticky=tk.W, padx=(10, 0))
         
-        ttk.Radiobutton(self.salary_output_mode_frame, text="所有员工在一个文件（每人一个Sheet）",
+        ttk.Radiobutton(self.salary_output_mode_frame, text="所有员工在一个文件（每人一个Sheet + 汇总表）",
                        variable=self.salary_output_mode, value="single_file").grid(row=0, column=1, sticky=tk.W, padx=(20, 0))
 
         # 文件信息显示

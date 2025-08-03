@@ -189,7 +189,7 @@ class SalaryExcelWriter:
     def process_multiple_salary_to_single_file(self, employees_data: List[Dict[str, Any]], 
                                               output_path: str) -> str:
         """
-        处理多个员工的工资数据到单个Excel文件，每个员工一个sheet
+        处理多个员工的工资数据到单个Excel文件，每个员工一个sheet，并包含汇总功能
         
         Args:
             employees_data: 员工工资数据列表，每个元素包含 salary_data 和 job_type
@@ -211,6 +211,8 @@ class SalaryExcelWriter:
                 output_workbook.remove(default_sheet)
             
             processed_count = 0
+            # 收集汇总数据
+            summary_data = []
             
             for emp_data in employees_data:
                 try:
@@ -253,6 +255,16 @@ class SalaryExcelWriter:
                     calculated_data = self._calculate_salary_data(salary_data, job_type)
                     self._fill_salary_data(new_worksheet, calculated_data, job_type)
                     
+                    # 收集汇总数据
+                    employee_summary = {
+                        'name': employee_name,
+                        'job_type': job_type,
+                        'month': salary_data['employee_info'].get('month', ''),
+                        'calculated_data': calculated_data,
+                        'operation_data': operation_data
+                    }
+                    summary_data.append(employee_summary)
+                    
                     processed_count += 1
                     self.logger.debug(f"员工 {employee_name} 处理完成")
                     
@@ -267,12 +279,17 @@ class SalaryExcelWriter:
             if processed_count == 0:
                 raise Exception("没有成功处理任何员工数据")
             
+            # 创建汇总sheet
+            if summary_data:
+                self.logger.info("创建工资汇总表")
+                self._create_salary_summary_sheet(output_workbook, summary_data)
+            
             # 确保输出目录存在
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
             # 保存文件
             output_workbook.save(output_path)
-            self.logger.info(f"批量工资条已生成: {output_path}，包含 {processed_count} 个员工")
+            self.logger.info(f"批量工资条已生成: {output_path}，包含 {processed_count} 个员工及汇总表")
             
             return output_path
             
@@ -1008,4 +1025,245 @@ class SalaryExcelWriter:
             
         except Exception as e:
             self.logger.error(f"模板结构验证失败: {str(e)}")
-            raise Exception(f"模板结构验证失败: {str(e)}") 
+            raise Exception(f"模板结构验证失败: {str(e)}")
+    
+    def _create_salary_summary_sheet(self, workbook, summary_data: List[Dict[str, Any]]):
+        """
+        创建工资汇总表sheet
+        
+        Args:
+            workbook: 工作簿
+            summary_data: 汇总数据列表
+        """
+        try:
+            # 创建汇总工作表，放在第一个位置
+            summary_ws = workbook.create_sheet(title="工资汇总表", index=0)
+            
+            # 获取当前月份（从第一个员工数据中获取）
+            current_month = summary_data[0]['month'] if summary_data else '未知月份'
+            
+            # 设置标题和制表日期
+            from datetime import datetime
+            current_date = datetime.now().strftime('%Y.%m.%d')
+            
+            # 标题行 - 合并单元格
+            summary_ws.merge_cells('A1:P1')
+            summary_ws['A1'] = f"{current_month}工资明细表"
+            summary_ws['A1'].font = Font(size=16, bold=True)
+            summary_ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+            
+            # 制表日期
+            summary_ws.merge_cells('M2:P2')
+            summary_ws['M2'] = f"制表日期：{current_date}"
+            summary_ws['M2'].alignment = Alignment(horizontal='center')
+            
+            # 表头行
+            headers = [
+                '序号', '姓名', '部门', '基本工资', '浮动工资', '业绩提成', '管理提成',
+                '手工费', '加班', '其他', '扣保险费', '扣个税', '休假扣款', '其他扣款',
+                '总扣额', '合计工资', '应下对公', '实色发儿童', '银行发', '公司交个'
+            ]
+            
+            # 写入表头
+            for col, header in enumerate(headers, 1):
+                cell = summary_ws.cell(row=3, column=col)
+                cell.value = header
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                # 设置边框
+                cell.border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+                # 设置背景色
+                cell.fill = PatternFill(start_color='F2F2F2', end_color='F2F2F2', fill_type='solid')
+            
+            # 初始化汇总数据
+            totals = {
+                'base_salary': 0, 'floating_salary': 0, 'commission': 0, 'management_commission': 0,
+                'manual_fee': 0, 'overtime': 0, 'other_income': 0, 'insurance_deduction': 0,
+                'tax_deduction': 0, 'leave_deduction': 0, 'other_deduction': 0,
+                'total_deduction': 0, 'total_salary': 0, 'net_salary': 0, 'bank_pay': 0, 'company_tax': 0
+            }
+            
+            # 填充员工数据
+            for idx, emp_data in enumerate(summary_data, 1):
+                row_num = idx + 3  # 从第4行开始
+                
+                calculated = emp_data['calculated_data']
+                operation = emp_data['operation_data']
+                
+                # 提取工资数据
+                base_salary = calculated.get('base_salary', 0)
+                floating_salary = calculated.get('floating_salary', 0)
+                
+                # 根据职业类型获取提成
+                commission = 0
+                if 'expert_commission' in calculated:
+                    commission = calculated.get('expert_commission', 0)
+                elif 'service_commission' in calculated:
+                    commission = calculated.get('service_commission', 0)
+                elif 'operation_commission' in calculated:
+                    commission = calculated.get('operation_commission', 0)
+                
+                manual_fee = (calculated.get('body_manual_fee', 0) + 
+                             calculated.get('face_manual_fee', 0))
+                
+                # 扣减项目
+                insurance = calculated.get('social_security', 0)
+                tax = calculated.get('personal_tax', 0)
+                leave_deduction = calculated.get('absent_deduction', 0)
+                other_deduction = calculated.get('late_deduction', 0)
+                
+                total_deduction = insurance + tax + leave_deduction + other_deduction
+                net_salary = calculated.get('net_salary', 0)
+                
+                # 写入数据行
+                row_data = [
+                    idx,                        # 序号
+                    emp_data['name'],          # 姓名
+                    emp_data['job_type'],      # 部门
+                    base_salary,               # 基本工资
+                    floating_salary,           # 浮动工资
+                    commission,                # 业绩提成
+                    0,                         # 管理提成
+                    manual_fee,                # 手工费
+                    0,                         # 加班
+                    0,                         # 其他
+                    abs(insurance),            # 扣保险费
+                    abs(tax),                  # 扣个税
+                    abs(leave_deduction),      # 休假扣款
+                    abs(other_deduction),      # 其他扣款
+                    abs(total_deduction),      # 总扣额
+                    base_salary + floating_salary + commission + manual_fee,  # 合计工资
+                    0,                         # 应下对公
+                    net_salary,                # 实色发儿童
+                    0,                         # 银行发
+                    0                          # 公司交个
+                ]
+                
+                # 累计汇总数据
+                totals['base_salary'] += base_salary
+                totals['floating_salary'] += floating_salary
+                totals['commission'] += commission
+                totals['manual_fee'] += manual_fee
+                totals['insurance_deduction'] += abs(insurance)
+                totals['tax_deduction'] += abs(tax)
+                totals['leave_deduction'] += abs(leave_deduction)
+                totals['other_deduction'] += abs(other_deduction)
+                totals['total_deduction'] += abs(total_deduction)
+                totals['total_salary'] += (base_salary + floating_salary + commission + manual_fee)
+                totals['net_salary'] += net_salary
+                
+                # 写入单元格
+                for col, value in enumerate(row_data, 1):
+                    cell = summary_ws.cell(row=row_num, column=col)
+                    cell.value = value
+                    # 数字格式
+                    if isinstance(value, (int, float)) and col > 3:
+                        cell.number_format = '#,##0.00'
+                    # 设置边框
+                    cell.border = Border(
+                        left=Side(style='thin'),
+                        right=Side(style='thin'),
+                        top=Side(style='thin'),
+                        bottom=Side(style='thin')
+                    )
+                    # 居中对齐
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # 添加小计行
+            subtotal_row = len(summary_data) + 4
+            summary_ws.cell(row=subtotal_row, column=1).value = "小计"
+            summary_ws.cell(row=subtotal_row, column=1).font = Font(bold=True)
+            
+            # 小计数据 - 真正的汇总计算
+            subtotal_data = [
+                totals['base_salary'],           # 基本工资
+                totals['floating_salary'],      # 浮动工资
+                totals['commission'],            # 业绩提成
+                0,                               # 管理提成
+                totals['manual_fee'],            # 手工费
+                0,                               # 加班
+                0,                               # 其他
+                totals['insurance_deduction'],   # 扣保险费
+                totals['tax_deduction'],         # 扣个税
+                totals['leave_deduction'],       # 休假扣款
+                totals['other_deduction'],       # 其他扣款
+                totals['total_deduction'],       # 总扣额
+                totals['total_salary'],          # 合计工资
+                0,                               # 应下对公
+                totals['net_salary'],            # 实色发儿童
+                0,                               # 银行发
+                0                                # 公司交个
+            ]
+            
+            for col, value in enumerate(subtotal_data, 4):
+                cell = summary_ws.cell(row=subtotal_row, column=col)
+                cell.value = value
+                cell.font = Font(bold=True)
+                cell.number_format = '#,##0.00'
+                cell.border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thick'),
+                    bottom=Side(style='thin')
+                )
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                # 小计行背景色
+                cell.fill = PatternFill(start_color='FFE4B5', end_color='FFE4B5', fill_type='solid')
+            
+            # 添加合计行（元）
+            total_row = subtotal_row + 2
+            summary_ws.cell(row=total_row, column=1).value = "合计(元)"
+            summary_ws.cell(row=total_row, column=1).font = Font(bold=True)
+            
+            # 合计数据（元）- 与小计相同，真正的汇总计算
+            total_data = [
+                totals['base_salary'],           # 基本工资
+                totals['floating_salary'],      # 浮动工资
+                totals['commission'],            # 业绩提成
+                0,                               # 管理提成
+                totals['manual_fee'],            # 手工费
+                0,                               # 加班
+                0,                               # 其他
+                totals['insurance_deduction'],   # 扣保险费
+                totals['tax_deduction'],         # 扣个税
+                totals['leave_deduction'],       # 休假扣款
+                totals['other_deduction'],       # 其他扣款
+                totals['total_deduction'],       # 总扣额
+                totals['total_salary'],          # 合计工资
+                0,                               # 应下对公
+                totals['net_salary'],            # 实色发儿童
+                0,                               # 银行发
+                0                                # 公司交个
+            ]
+            
+            for col, value in enumerate(total_data, 4):
+                cell = summary_ws.cell(row=total_row, column=col)
+                cell.value = value
+                cell.font = Font(bold=True, color='FF0000')  # 红色字体
+                cell.number_format = '#,##0.00'
+                cell.border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thick')
+                )
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                # 合计行背景色
+                cell.fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+            
+            # 设置列宽
+            column_widths = [6, 12, 10, 10, 10, 10, 10, 10, 8, 8, 10, 10, 10, 10, 10, 12, 10, 12, 10, 10]
+            for col, width in enumerate(column_widths, 1):
+                column_letter = get_column_letter(col)
+                summary_ws.column_dimensions[column_letter].width = width
+            
+            self.logger.info(f"工资汇总表创建完成，包含 {len(summary_data)} 个员工")
+            
+        except Exception as e:
+            self.logger.error(f"创建工资汇总表失败: {str(e)}")
+            raise Exception(f"创建工资汇总表失败: {str(e)}") 

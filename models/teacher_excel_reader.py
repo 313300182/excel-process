@@ -112,7 +112,8 @@ class TeacherExcelReader:
     def _read_xlsx_teacher_data(self, file_path: str, worksheet_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """读取.xlsx文件的老师数据"""
         try:
-            workbook = load_workbook(file_path, read_only=True)
+            # 使用data_only=True获取公式的计算值而不是公式字符串
+            workbook = load_workbook(file_path, read_only=True, data_only=True)
             
             if worksheet_name and worksheet_name in workbook.sheetnames:
                 worksheet = workbook[worksheet_name]
